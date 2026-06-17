@@ -1,5 +1,21 @@
 # Hermes → Mochisuki Handoff
 
+## Quick install
+
+```bash
+# Clone just the hermes folder (no need for the Mochisuki code)
+# Or copy the hermes/ folder from the repo.
+# Then:
+cd hermes
+bash setup.sh
+source venv/bin/activate
+python notify.py --ping   # test against localhost
+```
+
+That's it — one command, no dependencies outside this folder.
+
+---
+
 ## What Mochisuki is
 
 Mochisuki is a physical notification terminal — a Raspberry Pi with an e-ink display, NeoPixel LEDs, a buzzer, and a gesture sensor. It sits on a desk and shows notifications published via MQTT. Hermes (or any agent) publishes to `hermes/notify` and Mochisuki handles the rest.
