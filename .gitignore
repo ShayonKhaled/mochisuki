@@ -1,0 +1,19 @@
+# ── Secrets ─────────────────────────────────────────────────────────
+.env
+mochisuki_deploy_key
+mochisuki_deploy_key.pub
+askpass.sh
+
+# ── Runtime artifacts ───────────────────────────────────────────────
+__pycache__/
+*.pyc
+venv/
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# ── Tooling / internal ──────────────────────────────────────────────
+REASONIX.md
+mochisuki-production-software-handoff.md
+~/
