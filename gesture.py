@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 logger = logging.getLogger("mochisuki.gesture")
 
@@ -11,6 +12,8 @@ class AsyncGesture:
         self.address = 0x73
         self._enabled = False
         self.bus = None
+        self._last_error_at: float = 0
+        self._error_count: int = 0
 
     async def init(self):
         try:
@@ -26,6 +29,7 @@ class AsyncGesture:
 
     async def enable(self):
         self._enabled = True
+        self._error_count = 0
         logger.debug("Gesture polling enabled")
 
     async def disable(self):
@@ -37,7 +41,18 @@ class AsyncGesture:
             return 0
         try:
             reg_data = self.bus.read_byte_data(self.address, 0x43)
+            self._error_count = 0  # reset on success
             return reg_data & 0x0F
         except OSError:
-            logger.warning("I2C bus collision on gesture read — recovering")
+            # Rate-limit: log at most once per second, then summarize
+            now = time.monotonic()
+            self._error_count += 1
+            if now - self._last_error_at >= 1.0:
+                if self._error_count > 1:
+                    logger.warning("I2C bus collision on gesture read (%d errors in last second)",
+                                   self._error_count)
+                else:
+                    logger.warning("I2C bus collision on gesture read — recovering")
+                self._last_error_at = now
+                self._error_count = 0
             return 0

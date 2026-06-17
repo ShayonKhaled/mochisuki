@@ -140,6 +140,7 @@ class MochisukiEngine:
                     config.MQTT_BROKER,
                     port=config.MQTT_PORT,
                     identifier=config.MQTT_CLIENT_ID,
+                    keepalive=15,
                 ) as client:
                     logger.info("MQTT connected — subscribing to %s", config.MQTT_TOPIC_SUB)
                     await client.subscribe(config.MQTT_TOPIC_SUB)
