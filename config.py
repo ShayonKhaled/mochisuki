@@ -10,11 +10,14 @@ LED_COUNT       = 8        # Stick variant total
 LED_BRIGHTNESS  = 128      # Range: 0-255
 BUZZER_PIN      = 13       # Dedicated PWM capable pin
 
-# E-ink Hat Mapping
+# E-ink Hat Mapping (Waveshare 2.9" 296x128 V2, SPI)
 EINK_RST_PIN    = 17
 EINK_DC_PIN     = 25
 EINK_CS_PIN     = 8
 EINK_BUSY_PIN   = 24
+EINK_PWR_PIN    = 6         # patched in waveshare_epd — avoids NeoPixel clash on GPIO 18
+EINK_WIDTH      = 128       # rotation-dependent; epd2in9_V2 reports 128×296
+EINK_HEIGHT     = 296
 
 # --- Network & Integration Boundaries ---
 MQTT_BROKER     = os.getenv("MQTT_BROKER", "your-proxmox-tailscale-ip")
