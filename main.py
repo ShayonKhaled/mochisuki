@@ -10,11 +10,11 @@ import json
 import logging
 import signal
 import time
+from collections import deque
 from enum import Enum
 from typing import Optional
 
 import config
-import aiomqtt
 from buzzer import AsyncBuzzer
 from display import AsyncDisplay
 from gesture import AsyncGesture
@@ -63,6 +63,8 @@ class MochisukiEngine:
         self.alert_start_time: float = 0.0
         self.queue: asyncio.Queue = asyncio.Queue()
         self._shutdown_event = asyncio.Event()
+        self._mqtt_queue: deque = deque()  # thread-safe: paho push, async poll
+        self._mqtt_wake = asyncio.Event()
 
         # Subsystems
         self.db = ProductionLogger(config.DB_PATH)
@@ -88,12 +90,15 @@ class MochisukiEngine:
         # webhook_task = asyncio.create_task(self.start_webhook_server())  # TODO: phase 2
 
         shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+        mqtt_wake_task = asyncio.create_task(self._mqtt_wake.wait())
 
         # ── Main event loop ───────────────────────────────────────────
-        pending = {mqtt_task, shutdown_task}
+        pending = {mqtt_task, shutdown_task, mqtt_wake_task}
 
         try:
             while not self._shutdown_event.is_set():
+                # Drain thread-safe MQTT deque onto the async queue
+                await self._drain_mqtt()
                 # Process inbound notifications from MQTT / webhook
                 await self._process_network_queue()
 
@@ -109,6 +114,10 @@ class MochisukiEngine:
                     timeout=0.05,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+                if mqtt_wake_task in done:
+                    self._mqtt_wake.clear()
+                    mqtt_wake_task = asyncio.create_task(self._mqtt_wake.wait())
+                    pending.add(mqtt_wake_task)
                 if shutdown_task in done:
                     break
         finally:
@@ -129,33 +138,50 @@ class MochisukiEngine:
     # ── MQTT Client ───────────────────────────────────────────────────
 
     async def start_mqtt_client(self):
-        """Subscribe to Hermes notification topic with auto-reconnect."""
+        """Subscribe to Hermes notifications via paho-mqtt.
+
+        paho's on_message callback runs in a background thread. It pushes
+        decoded payloads onto a thread-safe deque + wakes the async loop
+        via an Event. The async loop drains the deque in _drain_mqtt.
+        """
+        def _on_message(_client, _userdata, msg):
+            """paho callback — runs in background thread."""
+            try:
+                payload = json.loads(msg.payload.decode("utf-8"))
+            except json.JSONDecodeError:
+                logger.warning("MQTT: non-JSON message dropped")
+                return
+            self._mqtt_queue.append(payload)
+            self._mqtt_wake.set()
+            # Publish ack from this thread (paho's publish is thread-safe)
+            ack = {
+                "id": payload.get("id", "unknown"),
+                "status": "received",
+                "device": "mochisuki-v1",
+                "timestamp": time.time(),
+            }
+            _client.publish(config.MQTT_TOPIC_ACK, json.dumps(ack))
+            logger.info("MQTT ack published to %s for %s",
+                         config.MQTT_TOPIC_ACK, payload.get("id", "unknown"))
+
         while not self._shutdown_event.is_set():
             try:
-                logger.info(
-                    "Connecting to MQTT broker at %s:%s",
-                    config.MQTT_BROKER, config.MQTT_PORT,
-                )
-                async with aiomqtt.Client(
-                    config.MQTT_BROKER,
-                    port=config.MQTT_PORT,
-                    identifier=config.MQTT_CLIENT_ID,
-                    keepalive=15,
-                ) as client:
-                    logger.info("MQTT connected — subscribing to %s", config.MQTT_TOPIC_SUB)
-                    await client.subscribe(config.MQTT_TOPIC_SUB)
+                import paho.mqtt.client as mqtt
 
-                    async for message in client.messages:
-                            if self._shutdown_event.is_set():
-                                break
-                            try:
-                                payload = json.loads(message.payload.decode("utf-8"))
-                                await self._enqueue_notification(payload)
-                                await self._publish_ack(client, payload.get("id", "unknown"))
-                            except json.JSONDecodeError:
-                                logger.warning("MQTT: non-JSON message dropped")
-                            except Exception:
-                                logger.exception("MQTT: error processing message")
+                logger.info("Connecting to MQTT broker at %s:%s",
+                            config.MQTT_BROKER, config.MQTT_PORT)
+                c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+                                client_id=config.MQTT_CLIENT_ID)
+                c.on_message = _on_message
+                c.connect(config.MQTT_BROKER, config.MQTT_PORT)
+                c.subscribe(config.MQTT_TOPIC_SUB)
+                c.loop_start()
+                logger.info("MQTT connected — subscribed to %s", config.MQTT_TOPIC_SUB)
+
+                await self._shutdown_event.wait()
+
+                c.loop_stop()
+                c.disconnect()
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -164,16 +190,11 @@ class MochisukiEngine:
                 logger.warning("MQTT disconnected (%s), retrying in 5s...", exc)
                 await asyncio.sleep(5)
 
-    async def _publish_ack(self, client: aiomqtt.Client, notification_id: str):
-        """Publish acknowledgement back to Hermes."""
-        ack = {
-            "id": notification_id,
-            "status": "received",
-            "device": "mochisuki-v1",
-            "timestamp": time.time(),
-        }
-        await client.publish(config.MQTT_TOPIC_ACK, json.dumps(ack))
-        logger.info("MQTT ack published to %s for %s", config.MQTT_TOPIC_ACK, notification_id)
+    async def _drain_mqtt(self):
+        """Drain the thread-safe MQTT deque onto the async notification queue."""
+        while self._mqtt_queue:
+            payload = self._mqtt_queue.popleft()
+            await self._enqueue_notification(payload)
 
     # ── Notification Queue ────────────────────────────────────────────
 
