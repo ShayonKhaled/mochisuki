@@ -2,7 +2,7 @@
 Mochisuki display driver — ZJY_M242 OLED (SSD1309, 128×64, SPI).
 
 Uses luma.oled for the device interface and Pillow for rendering.
-Gracefully degrades to a no-op stub when luma.oled is not installed.
+Gracefully degrades to a console-logging stub when luma.oled is not installed.
 """
 
 import asyncio
@@ -61,8 +61,7 @@ class AsyncDisplay:
                 gpio_RST=config.OLED_RST_PIN,
             )
             self.device = ssd1309(serial, width=self.width, height=self.height)
-            self.device.clear()
-            self.device.show()
+            self.device.contrast(255)
             logger.info("OLED display initialized (ZJY_M242 SSD1309 128×64 SPI)")
         except ImportError:
             logger.info("OLED display stubbed (luma.oled not available)")
