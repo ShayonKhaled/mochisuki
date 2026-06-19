@@ -7,7 +7,7 @@ load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 # --- Hardware Pins ---
 LED_PIN         = 18       # WS2812B Data Line via PWM DMA
 LED_COUNT       = 8        # Stick variant total
-LED_BRIGHTNESS  = 128      # Range: 0-255
+LED_BRIGHTNESS  = 40       # Range: 0-255
 BUZZER_PIN      = 13       # Dedicated PWM capable pin
 
 # E-ink Hat Mapping (Waveshare 2.9" 296x128 V2, SPI) — superseded by OLED below

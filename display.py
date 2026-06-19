@@ -104,7 +104,7 @@ def _draw_footer(draw: ImageDraw, text: str,
                           brightness=text_brightness)
 
 
-def _summarize(text: str, max_words: int = 3, max_px: int = 72) -> str:
+def _summarize(text: str, max_words: int = 2, max_px: int = 72) -> str:
     """First *max_words* words, truncated to fit *max_px* pixels."""
     words = text.strip().split()
     if not words:
