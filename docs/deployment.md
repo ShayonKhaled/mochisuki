@@ -7,7 +7,7 @@
 | Board | Raspberry Pi Zero 2 W | Headless, no display needed for boot |
 | Display | ZJY_M242 OLED (SSD1309, 128×64) | SPI — 128×64px |
 | LEDs | Adafruit NeoPixel Stick (8× WS2812B) | GPIO 18 — single-wire PWM |
-| Gesture | PAJ7620U2 breakout | I2C — address 0x73 |
+| Gesture | APDS-9960 breakout | I2C — address 0x39 |
 | Audio | Passive piezo buzzer | GPIO 13 — hardware PWM |
 | SD card | 8GB+ Class 10 / A1 | |
 
@@ -16,8 +16,8 @@
 ```
 GPIO 18  ─── NeoPixel Stick (data in)
 GPIO 13  ─── Piezo buzzer (PWM)
-I2C SDA ─── PAJ7620U2 SDA
-I2C SCL ─── PAJ7620U2 SCL
+I2C SDA ─── APDS-9960 SDA
+I2C SCL ─── APDS-9960 SCL
 
 ZJY_M242 OLED (SPI, SSD1309):
   GPIO 8  ─── CS  (SPI0 CE0)
