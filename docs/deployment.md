@@ -13,19 +13,32 @@
 
 ## Pinout
 
-```
-GPIO 18  ─── NeoPixel Stick (data in)
-GPIO 13  ─── Piezo buzzer (PWM)
-I2C SDA ─── APDS-9960 SDA
-I2C SCL ─── APDS-9960 SCL
+### 40-pin header connections
 
-ZJY_M242 OLED (SPI, SSD1309):
-  GPIO 8  ─── CS  (SPI0 CE0)
-  GPIO 10 ─── MOSI (SPI0 SDA)
-  GPIO 11 ─── SCLK (SPI0 SCL)
-  GPIO 17 ─── RST
-  GPIO 25 ─── DC
 ```
+ Pin │ Signal       → Component
+─────┼──────────────────────────────────
+   1 │ 3.3V         → APDS-9960 VIN
+   3 │ GPIO 2 (SDA) → APDS-9960 SDA
+   5 │ GPIO 3 (SCL) → APDS-9960 SCL
+   6 │ GND          → APDS-9960 GND
+─────┼──────────────────────────────────
+   8 │ SPI0 CE0     → OLED CS
+  10 │ SPI0 MOSI    → OLED SDA (MOSI)
+  11 │ SPI0 SCLK    → OLED SCL (SCLK)
+  17 │ GPIO 17      → OLED RST
+  25 │ GPIO 25      → OLED DC
+─────┼──────────────────────────────────
+  13 │ GPIO 13      → Piezo buzzer (PWM)
+  18 │ GPIO 18      → NeoPixel Stick (data in)
+```
+
+### Notes
+
+- I2C (APDS-9960) uses the dedicated hardware bus on pins 3/5 — no software bit-banging.
+- SPI (OLED) uses SPI0 at standard pins 8/10/11.
+- GND can be shared across components (pins 6, 9, 14, 20, 25, 30, 34, 39).
+- NeoPixel data-in is a single wire; VCC (5V) and GND should be supplied separately to the stick.
 
 ## OS setup
 
