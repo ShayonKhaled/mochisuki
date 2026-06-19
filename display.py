@@ -1,46 +1,129 @@
 """
 Mochisuki display driver — ZJY_M242 OLED (SSD1309, 128×64, SPI).
 
-Uses luma.oled for the device interface and Pillow for rendering.
-Gracefully degrades to a console-logging stub when luma.oled is not installed.
+Split-screen UI with face zone (left) and content zone (right).
 """
 
 import asyncio
 import logging
+from datetime import datetime
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger("mochisuki.display")
 
 
-def _wrap_text(text: str, max_chars: int) -> list:
-    """Simple word wrap — split on spaces, fit within max_chars."""
-    words = text.split()
-    lines = []
-    current = ""
-    for w in words:
-        if current and len(current) + 1 + len(w) > max_chars:
-            lines.append(current)
-            current = w
-        elif current:
-            current += " " + w
-        else:
-            current = w
-    if current:
-        lines.append(current)
-    return lines or [""]
+# ── Fonts (Terminus bold — two crisp bitmap sizes) ─────────────────────
+
+_FONT_PATH = Path(__file__).parent / "assets" / "terminus-bold.ttf"
+_FONT_FACE: ImageFont.FreeTypeFont = None   # 16px — face
+_FONT_BODY: ImageFont.FreeTypeFont = None   # 12px — everything else
 
 
-# ── Layout constants (128×64 OLED) ────────────────────────────────────
+def _load_fonts():
+    global _FONT_FACE, _FONT_BODY
+    try:
+        _FONT_FACE = ImageFont.truetype(str(_FONT_PATH), 16)
+        _FONT_BODY = ImageFont.truetype(str(_FONT_PATH), 12)
+        logger.info("Fonts: 16px (face) + 12px (body)")
+    except Exception as exc:
+        logger.warning("Font fallback to default (%s)", exc)
+        default = ImageFont.load_default()
+        _FONT_FACE = _FONT_BODY = default
 
-_TITLE_H   = 10    # title bar height (px)
-_LINE_H    = 10    # line height for body text
-_BODY_Y    = 12    # first body line y-offset
-_FOOTER_Y  = 54    # footer y-offset
-_WRAP_AT   = 16    # max characters per body line
-_MAX_LINES = 5     # max body lines before footer
 
+_load_fonts()
+
+
+# ── Layout constants ──────────────────────────────────────────────────────
+
+_DIVIDER_X = 46          # vertical split: face | content
+_FACE_CX = _DIVIDER_X // 2  # 23
+
+_CONTENT_X0 = _DIVIDER_X + 2   # 48
+_CONTENT_W  = 128 - _CONTENT_X0  # 80
+
+_FOOTER_Y = 48           # horizontal divider — 48+12=60, fits within 0-63
+_FOOTER_TEXT_Y = 51      # 51+10=61 (ascent), text ends at ~63
+
+# ── Faces (pure ASCII) ──────────────────────────────────────────────────
+
+FACES = {
+    "idle":       "-_-",
+    "sleeping":   "-_-",
+    "happy":      "^_^",
+    "sad":        "._.",
+    "alert":      "O_O",
+    "panic":      "X_X",
+    "snooze":     "-_^",
+    "dead":       "x_x",
+}
+
+
+# ── Drawing helpers ───────────────────────────────────────────────────────
+
+def _draw_frame(draw: ImageDraw, brightness: int = 255):
+    """Screen border (1px) + vertical divider at *DIVIDER_X*."""
+    # Outer border
+    draw.rectangle([0, 0, 127, 63], fill=0, outline=brightness)
+    # Vertical divider — full height
+    draw.line([(_DIVIDER_X, 1), (_DIVIDER_X, 62)],
+              fill=brightness)
+
+
+def _draw_face(draw: ImageDraw, face: str, y: int, brightness: int = 255):
+    """Draw a face centred in the left zone at *y*."""
+    w = _FONT_FACE.getbbox(face)[2]
+    x = _FACE_CX - w // 2
+    draw.text((x, y), face, font=_FONT_FACE, fill=brightness)
+
+
+def _draw_content_line(draw: ImageDraw, text: str, y: int,
+                       brightness: int = 255):
+    """Draw a line of text in the content zone at *y*."""
+    draw.text((_CONTENT_X0, y), text, font=_FONT_BODY, fill=brightness)
+
+
+def _draw_content_centred(draw: ImageDraw, text: str, y: int,
+                          brightness: int = 255):
+    """Draw text centred in the content zone at *y*."""
+    w = _FONT_BODY.getbbox(text)[2]
+    x = _CONTENT_X0 + (_CONTENT_W - w) // 2
+    draw.text((x, y), text, font=_FONT_BODY, fill=brightness)
+
+
+def _draw_footer(draw: ImageDraw, text: str,
+                 text_brightness: int = 255,
+                 line_brightness: int = 255):
+    """Footer horizontal line + centred text."""
+    draw.line([(_DIVIDER_X + 1, _FOOTER_Y), (126, _FOOTER_Y)],
+              fill=line_brightness)
+    _draw_content_centred(draw, text, _FOOTER_TEXT_Y,
+                          brightness=text_brightness)
+
+
+def _summarize(text: str, max_words: int = 3, max_px: int = 72) -> str:
+    """First *max_words* words, truncated to fit *max_px* pixels."""
+    words = text.strip().split()
+    if not words:
+        return ""
+    short = " ".join(words[:max_words])
+    w = _FONT_BODY.getbbox(short)[2]
+    if w <= max_px:
+        return short
+    while short and _FONT_BODY.getbbox(short + "…")[2] > max_px:
+        short = short[:-1]
+    return short + "…" if short else ""
+
+
+# ── Display class ─────────────────────────────────────────────────────────
 
 class AsyncDisplay:
     """ZJY_M242 OLED (SSD1309, 128×64, SPI) via luma.oled."""
+
+    _contrast_full = 255
+    _contrast_dim  = 60
 
     def __init__(self):
         self.device = None
@@ -56,74 +139,172 @@ class AsyncDisplay:
 
             serial = spi(
                 port=0,
-                device=0,              # CE0 → GPIO 8
+                device=0,
                 gpio_DC=config.OLED_DC_PIN,
                 gpio_RST=config.OLED_RST_PIN,
             )
             self.device = ssd1309(serial, width=self.width, height=self.height)
-            self.device.contrast(255)
-            logger.info("OLED display initialized (ZJY_M242 SSD1309 128×64 SPI)")
+            self.device.contrast(self._contrast_full)
+            self.device.show()
+            logger.info("OLED initialized (ZJY_M242 SSD1309 128×64 SPI)")
         except ImportError:
-            logger.info("OLED display stubbed (luma.oled not available)")
+            logger.info("OLED stubbed (luma.oled not available)")
         except Exception as e:
-            logger.error("OLED display init failed: %s", e)
+            logger.error("OLED init failed: %s", e)
             self.device = None
 
-    async def show_face(self, face_name: str):
-        """Draw a static face on the OLED."""
-        logger.info("[display] show face: %s", face_name)
+    async def _render(self, draw_func, contrast: int = None):
+        """Render via luma's canvas (proven to work on this device)."""
         if not self.device:
             return
         try:
             from luma.core.render import canvas
 
             with canvas(self.device) as draw:
-                if face_name == "sleeping":
-                    draw.text((24, 27), "( - _ - ) zZz", fill="white")
-                else:
-                    draw.text((32, 27), f"[{face_name}]", fill="white")
+                draw_func(draw)
+            self.device.show()
+            if contrast is not None:
+                self.device.contrast(contrast)
         except Exception as e:
-            logger.error("show_face failed: %s", e)
+            logger.error("Render failed: %s", e)
 
-    async def show_notification(self, payload: dict):
-        """Render a notification on the 128×64 OLED display."""
+    # ── IDLE ──────────────────────────────────────────────────────────
+
+    async def show_idle(self, connected: bool = True,
+                        now: datetime = None) -> None:
+        """Sleeping face left, clock right."""
         if not self.device:
-            logger.info("[display] would show notification: %s",
-                        payload.get("title", "(no title)"))
+            logger.info("[display] idle (connected=%s)", connected)
             return
-        try:
-            from luma.core.render import canvas
+        now = now or datetime.now()
+        time_str = now.strftime("%H:%M")
+        status = "OK" if connected else "??"
 
-            title = payload.get("title", "(no title)")
-            body = payload.get("body", "")
-            urgency = payload.get("urgency", "unknown")
-            source = payload.get("source", "unknown")
+        def _draw(draw):
+            _draw_frame(draw, brightness=80)
+            _draw_face(draw, FACES["idle"], 22, brightness=180)
+            _draw_content_centred(draw, time_str, 22, brightness=180)
+            _draw_footer(draw, "mochisuki",
+                         text_brightness=80, line_brightness=60)
 
-            with canvas(self.device) as draw:
-                # ── Title bar — inverted highlight ─────────────────
-                draw.rectangle((0, 0, self.width - 1, _TITLE_H - 1), fill="white")
-                draw.text((2, 1), title[:18], fill="black")
+        await self._render(_draw, contrast=self._contrast_dim)
+        logger.debug("[display] idle %s  %s", time_str, status)
 
-                # ── Body lines ────────────────────────────────────
-                lines = _wrap_text(body, _WRAP_AT)[:_MAX_LINES]
+    # ── ALERT ─────────────────────────────────────────────────────────
 
-                y = _BODY_Y
-                for line in lines:
-                    draw.text((2, y), line, fill="white")
-                    y += _LINE_H
+    async def show_alert(self, payload: dict) -> None:
+        """Single-line notification: face + urgency + short message."""
+        if not self.device:
+            logger.info("[display] alert: %s", payload.get("title"))
+            return
 
-                # ── Footer — urgency + source ─────────────────────
-                footer = f"<{urgency}>  {source}"[:24]
-                draw.text((2, _FOOTER_Y), footer, fill="white")
+        title = (payload.get("title") or "").strip()
+        body = (payload.get("body") or "").strip()
+        urgency = (payload.get("urgency") or "medium").lower()
+        source = (payload.get("source") or "").strip()
 
-            logger.info("[display] rendered notification: %s", title)
-        except ImportError:
-            logger.warning("Pillow not available for show_notification")
-        except Exception as e:
-            logger.error("show_notification failed: %s", e)
+        # One short message: prefer title, fall back to body, then source
+        msg = _summarize(title) or _summarize(body) or _summarize(source) or "?"
 
-    async def sleep(self):
-        """Put the OLED into power-save mode."""
+        # Face + urgency marker
+        if urgency in ("high", "critical"):
+            face = FACES["panic"]
+            marker = "!!"
+            bright = 255
+        elif urgency == "medium":
+            face = FACES["alert"]
+            marker = "! "
+            bright = 255
+        else:
+            face = FACES["alert"]
+            marker = "o "
+            bright = 200
+
+        def _draw(draw):
+            _draw_frame(draw, brightness=255)
+            _draw_face(draw, face, 18, brightness=bright)
+            draw.text((_FACE_CX - 6, 41), marker, font=_FONT_BODY,
+                      fill=bright)
+            _draw_content_centred(draw, msg, 20, brightness=255)
+            _draw_footer(draw, "← dismiss",
+                         text_brightness=180, line_brightness=180)
+
+        await self._render(_draw, contrast=self._contrast_full)
+        logger.info("[display] alert %s [%s]", msg, urgency)
+
+    # ── ACK ───────────────────────────────────────────────────────────
+
+    async def show_ack(self, title: str = "") -> None:
+        """Happy face + confirmation."""
+        if not self.device:
+            logger.info("[display] ack")
+            return
+
+        def _draw(draw):
+            _draw_frame(draw, brightness=255)
+            _draw_face(draw, FACES["happy"], 18, brightness=255)
+            _draw_content_centred(draw, "got it!", 22, brightness=200)
+            _draw_footer(draw, "back to sleep",
+                         text_brightness=120, line_brightness=120)
+
+        await self._render(_draw, contrast=self._contrast_full)
+
+    # ── SNOOZE ────────────────────────────────────────────────────────
+
+    async def show_snooze(self, remaining_sec: int,
+                          resume_time: str = "") -> None:
+        """Half-asleep face + countdown."""
+        if not self.device:
+            logger.info("[display] snooze %ds", remaining_sec)
+            return
+
+        if remaining_sec >= 3600:
+            remaining_str = f"{remaining_sec // 3600}:{(remaining_sec % 3600) // 60:02d}"
+        else:
+            remaining_str = f"{remaining_sec // 60}:{remaining_sec % 60:02d}"
+
+        def _draw(draw):
+            _draw_frame(draw, brightness=100)
+            _draw_face(draw, FACES["snooze"], 18, brightness=100)
+            _draw_content_centred(draw, remaining_str, 20, brightness=180)
+            if resume_time:
+                _draw_content_centred(draw, f"~{resume_time}",
+                                      34, brightness=80)
+            _draw_footer(draw, "← dismiss",
+                         text_brightness=80, line_brightness=60)
+
+        await self._render(_draw, contrast=self._contrast_dim)
+
+    # ── SULK ──────────────────────────────────────────────────────────
+
+    async def show_sulk(self, payload: dict) -> None:
+        """Sulky face + missed info."""
+        if not self.device:
+            logger.info("[display] sulk: %s", payload.get("title"))
+            return
+
+        title = _summarize(payload.get("title", ""))
+
+        def _draw(draw):
+            _draw_frame(draw, brightness=60)
+            _draw_face(draw, FACES["sad"], 18, brightness=60)
+            _draw_content_centred(draw, "you missed:", 16, brightness=50)
+            if title:
+                _draw_content_centred(draw, title, 30, brightness=80)
+            _draw_footer(draw, "auto-dismissed",
+                         text_brightness=40, line_brightness=30)
+
+        await self._render(_draw, contrast=self._contrast_dim)
+
+    # ── Convenience ───────────────────────────────────────────────────
+
+    async def show_notification(self, payload: dict, face: str = None) -> None:
+        await self.show_alert(payload)
+
+    async def show_face(self, name: str) -> None:
+        await self.show_idle(connected=True)
+
+    async def sleep(self) -> None:
         if self.device:
             try:
                 self.device.hide()

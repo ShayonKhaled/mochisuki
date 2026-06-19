@@ -11,6 +11,7 @@ import logging
 import signal
 import time
 from collections import deque
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
@@ -65,6 +66,9 @@ class MochisukiEngine:
         self._shutdown_event = asyncio.Event()
         self._mqtt_queue: deque = deque()  # thread-safe: paho push, async poll
         self._mqtt_wake = asyncio.Event()
+
+        # Hermes / MQTT connection state
+        self.hermes_connected: bool = False
 
         # Subsystems
         self.db = ProductionLogger(config.DB_PATH)
@@ -176,7 +180,11 @@ class MochisukiEngine:
                 c.connect(config.MQTT_BROKER, config.MQTT_PORT)
                 c.subscribe(config.MQTT_TOPIC_SUB)
                 c.loop_start()
+                self.hermes_connected = True
                 logger.info("MQTT connected — subscribed to %s", config.MQTT_TOPIC_SUB)
+                # Refresh idle display to show connection status
+                if self.state is AppState.IDLE:
+                    await self.display.show_idle(connected=True)
 
                 await self._shutdown_event.wait()
 
@@ -185,6 +193,9 @@ class MochisukiEngine:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
+                self.hermes_connected = False
+                if self.state is AppState.IDLE:
+                    await self.display.show_idle(connected=False)
                 if self._shutdown_event.is_set():
                     break
                 logger.warning("MQTT disconnected (%s), retrying in 5s...", exc)
@@ -251,19 +262,20 @@ class MochisukiEngine:
             self.current_notification.get("urgency"),
         )
         await self.gesture.enable()
-        await self.display.show_notification(self.current_notification)
+
+        await self.display.show_alert(self.current_notification)
+
         await self.leds.set_urgency(self.current_notification["urgency"])
         await self.buzzer.chime_notify()
         self.db.log_received(self.current_notification)
 
     async def _transition_to_idle(self):
-        """Return to idle — silence everything, put display to sleep."""
+        """Return to idle — silence everything, show always-on face."""
         self.state = AppState.IDLE
         logger.info("→ IDLE")
         await self.gesture.disable()
         await self.leds.off()
-        await self.display.show_face("sleeping")
-        await self.display.sleep()
+        await self.display.show_idle(connected=self.hermes_connected)
         self.current_notification = None
 
     # ── Escalation ────────────────────────────────────────────────────
@@ -278,6 +290,8 @@ class MochisukiEngine:
                 self.current_notification["id"], "ignored", int(elapsed)
             )
             await self.buzzer.chime_sulk()
+            await self.display.show_sulk(self.current_notification)
+            await asyncio.sleep(3)
             await self._transition_to_idle()
 
         elif elapsed > config.ESCALATION_2_SEC:
@@ -300,6 +314,8 @@ class MochisukiEngine:
             self.db.log_action(self.current_notification["id"], "dismiss", elapsed)
             await self.leds.flash_ack()
             await self.buzzer.chime_ack()
+            await self.display.show_ack()
+            await asyncio.sleep(2)
             await self._transition_to_idle()
 
         elif action == 4:  # RIGHT → Short snooze
@@ -314,8 +330,12 @@ class MochisukiEngine:
             logger.debug("Gesture: unknown code %d — ignored", action)
 
     async def _apply_snooze(self, seconds: int):
-        """Snooze: return to idle, re-alert after delay."""
+        """Snooze: show snooze screen, then idle + deferred wakeup."""
         payload = self.current_notification
+        resume_dt = datetime.now() + timedelta(seconds=seconds)
+        resume_time = resume_dt.strftime("%H:%M")
+        await self.display.show_snooze(seconds, resume_time)
+        await asyncio.sleep(2)
         await self._transition_to_idle()
         asyncio.create_task(self._deferred_alert_wakeup(seconds, payload))
 
