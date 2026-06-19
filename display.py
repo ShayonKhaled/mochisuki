@@ -44,16 +44,17 @@ _FACE_CX = _DIVIDER_X // 2  # 23
 _CONTENT_X0 = _DIVIDER_X + 2   # 48
 _CONTENT_W  = 128 - _CONTENT_X0  # 80
 
+_FACE_Y = 24             # vertical center for all faces (64px / 2 - 16/2)
 _FOOTER_Y = 48           # horizontal divider — 48+12=60, fits within 0-63
 _FOOTER_TEXT_Y = 51      # 51+10=61 (ascent), text ends at ~63
 
 # ── Faces (pure ASCII) ──────────────────────────────────────────────────
 
 FACES = {
-    "idle":       "-_-",
-    "sleeping":   "-_-",
+    "idle":       "(._.)",
+    "sleeping":   "(._.)",
     "happy":      "^_^",
-    "sad":        "._.",
+    "sad":        "T_T",
     "alert":      "O_O",
     "panic":      "X_X",
     "snooze":     "-_^",
@@ -178,17 +179,21 @@ class AsyncDisplay:
             return
         now = now or datetime.now()
         time_str = now.strftime("%H:%M")
-        status = "OK" if connected else "??"
 
         def _draw(draw):
             _draw_frame(draw, brightness=80)
-            _draw_face(draw, FACES["idle"], 22, brightness=180)
-            _draw_content_centred(draw, time_str, 22, brightness=180)
-            _draw_footer(draw, "mochisuki",
+            _draw_face(draw, FACES["idle"], _FACE_Y, brightness=180)
+            _draw_content_centred(draw, time_str, 18, brightness=180)
+            # Connection dot under the face
+            dot = "•" if connected else "○"
+            w = _FONT_BODY.getbbox(dot)[2]
+            draw.text((_FACE_CX - w // 2, 40), dot, font=_FONT_BODY,
+                      fill=120 if connected else 50)
+            _draw_footer(draw, "  zzz",
                          text_brightness=80, line_brightness=60)
 
         await self._render(_draw, contrast=self._contrast_dim)
-        logger.debug("[display] idle %s  %s", time_str, status)
+        logger.debug("[display] idle %s  %s", time_str, "OK" if connected else "??")
 
     # ── ALERT ─────────────────────────────────────────────────────────
 
@@ -222,10 +227,10 @@ class AsyncDisplay:
 
         def _draw(draw):
             _draw_frame(draw, brightness=255)
-            _draw_face(draw, face, 18, brightness=bright)
+            _draw_face(draw, face, _FACE_Y, brightness=bright)
             draw.text((_FACE_CX - 6, 41), marker, font=_FONT_BODY,
                       fill=bright)
-            _draw_content_centred(draw, msg, 20, brightness=255)
+            _draw_content_centred(draw, msg, 18, brightness=255)
             _draw_footer(draw, "← dismiss",
                          text_brightness=180, line_brightness=180)
 
@@ -242,9 +247,10 @@ class AsyncDisplay:
 
         def _draw(draw):
             _draw_frame(draw, brightness=255)
-            _draw_face(draw, FACES["happy"], 18, brightness=255)
-            _draw_content_centred(draw, "got it!", 22, brightness=200)
-            _draw_footer(draw, "back to sleep",
+            _draw_face(draw, FACES["happy"], _FACE_Y, brightness=255)
+            _draw_content_centred(draw, "got it!", 10, brightness=200)
+            _draw_content_centred(draw, "*", 26, brightness=100)
+            _draw_footer(draw, "goodnight",
                          text_brightness=120, line_brightness=120)
 
         await self._render(_draw, contrast=self._contrast_full)
@@ -265,12 +271,12 @@ class AsyncDisplay:
 
         def _draw(draw):
             _draw_frame(draw, brightness=100)
-            _draw_face(draw, FACES["snooze"], 18, brightness=100)
-            _draw_content_centred(draw, remaining_str, 20, brightness=180)
+            _draw_face(draw, FACES["alert"], _FACE_Y, brightness=100)
+            _draw_content_centred(draw, remaining_str, 10, brightness=180)
             if resume_time:
                 _draw_content_centred(draw, f"~{resume_time}",
-                                      34, brightness=80)
-            _draw_footer(draw, "← dismiss",
+                                      26, brightness=80)
+            _draw_footer(draw, "snoozing",
                          text_brightness=80, line_brightness=60)
 
         await self._render(_draw, contrast=self._contrast_dim)
@@ -283,15 +289,11 @@ class AsyncDisplay:
             logger.info("[display] sulk: %s", payload.get("title"))
             return
 
-        title = _summarize(payload.get("title", ""))
-
         def _draw(draw):
             _draw_frame(draw, brightness=60)
-            _draw_face(draw, FACES["sad"], 18, brightness=60)
-            _draw_content_centred(draw, "you missed:", 16, brightness=50)
-            if title:
-                _draw_content_centred(draw, title, 30, brightness=80)
-            _draw_footer(draw, "auto-dismissed",
+            _draw_face(draw, FACES["sad"], _FACE_Y, brightness=60)
+            _draw_content_centred(draw, "missed", 18, brightness=80)
+            _draw_footer(draw, "timed out",
                          text_brightness=40, line_brightness=30)
 
         await self._render(_draw, contrast=self._contrast_dim)

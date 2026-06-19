@@ -14,6 +14,7 @@ data/
 *.db-shm
 
 # ── Tooling / internal ──────────────────────────────────────────────
+.reasonix/
 REASONIX.md
 mochisuki-production-software-handoff.md
 ~/
