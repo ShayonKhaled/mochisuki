@@ -6,3 +6,4 @@ rpi-ws281x==5.0.0
 smbus2==0.4.3
 python-dotenv==1.0.1
 aiohttp==3.9.5
+luma.oled==4.1.0

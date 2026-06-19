@@ -1,6 +1,6 @@
 # Mochisuki
 
-**Notification daemon for Raspberry Pi Zero W** — listens for notifications via MQTT, then drives e-ink display, NeoPixel LEDs, a piezo buzzer, and a gesture sensor for hands-free interaction.
+**Notification daemon for Raspberry Pi Zero W** — listens for notifications via MQTT, then drives an OLED display, NeoPixel LEDs, a piezo buzzer, and a gesture sensor for hands-free interaction.
 
 A Mochisuki device sits on your desk and acts as a physical notification terminal. Any Hermes-compatible agent (or your own scripts) can publish a notification to `hermes/notify`, and the daemon handles the rest: visual display, urgency escalation, snooze/dismiss via gesture, and persistent event logging.
 
@@ -59,4 +59,4 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 - **aiomqtt** — async MQTT client (subscribes `hermes/notify`, publishes `hermes/ack`)
 - **microdot** — async HTTP server (webhook endpoint — coming in phase 2)
 - **ProductionLogger** — SQLite with WAL + `synchronous=NORMAL` for SD-card longevity
-- **Hardware** — PAJ7620U2 (gesture), WS2812B (NeoPixels), Waveshare e-ink, piezo buzzer
+- **Hardware** — PAJ7620U2 (gesture), WS2812B (NeoPixels), ZJY_M242 OLED (SSD1309 128×64 SPI), piezo buzzer

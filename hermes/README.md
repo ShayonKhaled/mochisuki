@@ -18,7 +18,7 @@ That's it — one command, no dependencies outside this folder.
 
 ## What Mochisuki is
 
-Mochisuki is a physical notification terminal — a Raspberry Pi with an e-ink display, NeoPixel LEDs, a buzzer, and a gesture sensor. It sits on a desk and shows notifications published via MQTT. Hermes (or any agent) publishes to `hermes/notify` and Mochisuki handles the rest.
+Mochisuki is a physical notification terminal — a Raspberry Pi with an OLED display, NeoPixel LEDs, a buzzer, and a gesture sensor. It sits on a desk and shows notifications published via MQTT. Hermes (or any agent) publishes to `hermes/notify` and Mochisuki handles the rest.
 
 ## How Hermes talks to Mochisuki
 
@@ -48,7 +48,7 @@ Hermes                    Mosquitto/MQTT                Mochisuki
 ```json
 {
   "id":       "string (required) — unique notification id",
-  "title":    "string — short headline shown on e-ink",
+  "title":    "string — short headline shown on OLED",
   "body":     "string — detail text (optional)",
   "category": "string — grouping label, e.g. 'ci', 'alert', 'system'",
   "urgency":  "'low' | 'medium' | 'high' | 'critical' — defaults to 'low'",

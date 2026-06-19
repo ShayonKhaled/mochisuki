@@ -5,7 +5,7 @@
 | Component | Part | Notes |
 |---|---|---|
 | Board | Raspberry Pi Zero 2 W | Headless, no display needed for boot |
-| Display | Waveshare 2.13" e-ink HAT (V4) | SPI — 250×122px |
+| Display | ZJY_M242 OLED (SSD1309, 128×64) | SPI — 128×64px |
 | LEDs | Adafruit NeoPixel Stick (8× WS2812B) | GPIO 18 — single-wire PWM |
 | Gesture | PAJ7620U2 breakout | I2C — address 0x73 |
 | Audio | Passive piezo buzzer | GPIO 13 — hardware PWM |
@@ -19,14 +19,12 @@ GPIO 13  ─── Piezo buzzer (PWM)
 I2C SDA ─── PAJ7620U2 SDA
 I2C SCL ─── PAJ7620U2 SCL
 
-E-Ink HAT (SPI):
-  GPIO 8  ─── CS
-  GPIO 9  ─── MOSI
-  GPIO 10 ─── SCLK
-  GPIO 11 ─── MISO (not used by e-ink)
-  GPIO 17 ─── DC
-  GPIO 24 ─── Busy
-  GPIO 25 ─── RST
+ZJY_M242 OLED (SPI, SSD1309):
+  GPIO 8  ─── CS  (SPI0 CE0)
+  GPIO 10 ─── MOSI (SPI0 SDA)
+  GPIO 11 ─── SCLK (SPI0 SCL)
+  GPIO 17 ─── RST
+  GPIO 25 ─── DC
 ```
 
 ## OS setup

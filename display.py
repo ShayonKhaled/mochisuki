@@ -1,7 +1,12 @@
+"""
+Mochisuki display driver — ZJY_M242 OLED (SSD1309, 128×64, SPI).
+
+Uses luma.oled for the device interface and Pillow for rendering.
+Gracefully degrades to a no-op stub when luma.oled is not installed.
+"""
+
 import asyncio
 import logging
-import os
-import sys
 
 logger = logging.getLogger("mochisuki.display")
 
@@ -23,106 +28,106 @@ def _wrap_text(text: str, max_chars: int) -> list:
         lines.append(current)
     return lines or [""]
 
-# Bundled Waveshare e-paper library lives in lib/
-_lib_path = os.path.join(os.path.dirname(__file__), "lib")
-if os.path.isdir(_lib_path) and _lib_path not in sys.path:
-    sys.path.insert(0, _lib_path)
+
+# ── Layout constants (128×64 OLED) ────────────────────────────────────
+
+_TITLE_H   = 10    # title bar height (px)
+_LINE_H    = 10    # line height for body text
+_BODY_Y    = 12    # first body line y-offset
+_FOOTER_Y  = 54    # footer y-offset
+_WRAP_AT   = 16    # max characters per body line
+_MAX_LINES = 5     # max body lines before footer
 
 
 class AsyncDisplay:
-    """Waveshare 2.9\" e-ink display driver (296x128, SPI, epd2in9_V2)."""
+    """ZJY_M242 OLED (SSD1309, 128×64, SPI) via luma.oled."""
 
     def __init__(self):
-        self.driver = None
-        self.refresh_counter = 0
+        self.device = None
+        self.width = 128
+        self.height = 64
 
     async def init(self):
+        """Initialise the SSD1309 over SPI. Falls back to stub on ImportError."""
         try:
-            from waveshare_epd import epd2in9_V2
-            self.driver = epd2in9_V2.EPD()
-            ret = self.driver.init()
-            if ret == 0:
-                self.driver.Clear(0xFF)
-                logger.info("E-ink display initialized (2.9\" 296x128 V2)")
-            else:
-                logger.error("E-ink init() returned %d — display may not be connected", ret)
-                self.driver = None
-        except ImportError:
-            logger.info("E-ink display stubbed (waveshare_epd not available)")
-        except Exception as e:
-            logger.error("E-ink display init failed: %s", e)
-            self.driver = None
+            from luma.core.interface.serial import spi
+            from luma.oled.device import ssd1309
+            import config
 
-    async def _reinit_if_needed(self):
-        """Re-initialize if display was put to sleep (SPI closed)."""
-        try:
-            self.driver.init()
-        except Exception:
-            # Some drivers throw on double-init — ignore
-            pass
+            serial = spi(
+                port=0,
+                device=0,              # CE0 → GPIO 8
+                gpio_DC=config.OLED_DC_PIN,
+                gpio_RST=config.OLED_RST_PIN,
+            )
+            self.device = ssd1309(serial, width=self.width, height=self.height)
+            self.device.clear()
+            self.device.show()
+            logger.info("OLED display initialized (ZJY_M242 SSD1309 128×64 SPI)")
+        except ImportError:
+            logger.info("OLED display stubbed (luma.oled not available)")
+        except Exception as e:
+            logger.error("OLED display init failed: %s", e)
+            self.device = None
 
     async def show_face(self, face_name: str):
-        """Draw a static face on the e-ink display."""
+        """Draw a static face on the OLED."""
         logger.info("[display] show face: %s", face_name)
-        if not self.driver:
+        if not self.device:
             return
         try:
-            from PIL import Image, ImageDraw
-            await self._reinit_if_needed()
-            W, H = self.driver.width, self.driver.height  # 128 x 296
-            image = Image.new("1", (W, H), 255)
-            draw = ImageDraw.Draw(image)
+            from luma.core.render import canvas
 
-            if face_name == "sleeping":
-                draw.text((W // 2 - 40, H // 2 - 10), "( - _ - ) zZz", fill=0)
-            else:
-                draw.text((W // 2 - 30, H // 2 - 10), f"[{face_name}]", fill=0)
-
-            self.driver.display(self.driver.getbuffer(image))
-        except ImportError:
-            logger.warning("Pillow not available for show_face")
+            with canvas(self.device) as draw:
+                if face_name == "sleeping":
+                    draw.text((24, 27), "( - _ - ) zZz", fill="white")
+                else:
+                    draw.text((32, 27), f"[{face_name}]", fill="white")
+        except Exception as e:
+            logger.error("show_face failed: %s", e)
 
     async def show_notification(self, payload: dict):
-        """Render a notification on the e-ink display."""
-        if not self.driver:
-            logger.info("[display] would show notification: %s", payload.get("title", "(no title)"))
+        """Render a notification on the 128×64 OLED display."""
+        if not self.device:
+            logger.info("[display] would show notification: %s",
+                        payload.get("title", "(no title)"))
             return
-        self.refresh_counter += 1
         try:
-            await self._reinit_if_needed()
-            from PIL import Image, ImageDraw
+            from luma.core.render import canvas
 
-            W, H = self.driver.width, self.driver.height  # 128 x 296
-            image = Image.new("1", (W, H), 255)
-            draw = ImageDraw.Draw(image)
-
-            # Title bar — black background
-            draw.rectangle((0, 0, W - 1, 28), fill=0)
             title = payload.get("title", "(no title)")
-            draw.text((6, 6), title[:18], fill=255)
-
-            # Body text
             body = payload.get("body", "")
             urgency = payload.get("urgency", "unknown")
             source = payload.get("source", "unknown")
 
-            y = 36
-            if body:
-                for line in _wrap_text(body, 24):
-                    draw.text((6, y), line, fill=0)
-                    y += 16
+            with canvas(self.device) as draw:
+                # ── Title bar — inverted highlight ─────────────────
+                draw.rectangle((0, 0, self.width - 1, _TITLE_H - 1), fill="white")
+                draw.text((2, 1), title[:18], fill="black")
 
-            # Footer — urgency + source + line
-            y = max(y, H - 40)
-            draw.line((0, y, W - 1, y), fill=0)
-            draw.text((6, y + 4), f"<{urgency}>  {source}", fill=0)
+                # ── Body lines ────────────────────────────────────
+                lines = _wrap_text(body, _WRAP_AT)[:_MAX_LINES]
 
-            self.driver.display(self.driver.getbuffer(image))
+                y = _BODY_Y
+                for line in lines:
+                    draw.text((2, y), line, fill="white")
+                    y += _LINE_H
+
+                # ── Footer — urgency + source ─────────────────────
+                footer = f"<{urgency}>  {source}"[:24]
+                draw.text((2, _FOOTER_Y), footer, fill="white")
+
             logger.info("[display] rendered notification: %s", title)
         except ImportError:
             logger.warning("Pillow not available for show_notification")
+        except Exception as e:
+            logger.error("show_notification failed: %s", e)
 
     async def sleep(self):
-        if self.driver:
-            self.driver.sleep()
-        logger.debug("[display] sleep")
+        """Put the OLED into power-save mode."""
+        if self.device:
+            try:
+                self.device.hide()
+                logger.debug("[display] sleep")
+            except Exception:
+                pass

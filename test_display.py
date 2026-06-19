@@ -1,70 +1,74 @@
-"""Display test — Waveshare 2.13\" e-ink HAT (V4) on Raspberry Pi.
+#!/usr/bin/env python3
+"""
+Standalone OLED display test for Mochisuki — ZJY_M242 (SSD1309, 128×64, SPI).
 
-Uses only the waveshare_epd library + Pillow.
-Gracefully exits with a message if the library isn't installed.
+Displays a test pattern then shows a sample notification.
+Run on the Pi directly.
+
+Usage:
+    python test_display.py
 """
 
+import asyncio
 import logging
-import sys
 import time
 
+from display import AsyncDisplay
+from luma.core.render import canvas
+
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("test_display")
 
-try:
-    from waveshare_epd import epd2in13_V4
-    from PIL import Image, ImageDraw, ImageFont
-except ImportError as e:
-    print(f"Library not available: {e}")
-    print("Install on Raspberry Pi: pip install waveshare-epd Pillow")
-    sys.exit(1)
 
-print("Initialising Waveshare 2.13\" e-ink V4...")
-epd = epd2in13_V4.EPD()
-epd.init()
-W, H = epd.width, epd.height  # 250 x 122
+async def main():
+    logger.info("=== OLED Display Test ===")
 
-# 1 ── Clear to white ──────────────────────────────────────────────────
-print("Step 1: White screen")
-epd.Clear(0xFF)
-time.sleep(2)
+    display = AsyncDisplay()
+    await display.init()
+    if not display.device:
+        logger.error("Display not available — aborting")
+        return 1
 
-# 2 ── Full black frame ────────────────────────────────────────────────
-print("Step 2: Full black")
-image = Image.new("1", (W, H), 0)
-epd.display(epd.getbuffer(image))
-time.sleep(2)
+    # ── Test 1: sleeping face ─────────────────────────────────────────
+    logger.info("Test 1 — sleeping face")
+    await display.show_face("sleeping")
+    await asyncio.sleep(3)
 
-# 3 ── Notification mockup ─────────────────────────────────────────────
-print("Step 3: Notification mockup")
-image = Image.new("1", (W, H), 255)
-draw = ImageDraw.Draw(image)
+    # ── Test 2: notification card ─────────────────────────────────────
+    logger.info("Test 2 — notification")
+    await display.show_notification({
+        "title": "Hello from Mochisuki!",
+        "body": "This is a test notification on the ZJY_M242 OLED. SSD1309 128x64 via SPI.",
+        "urgency": "low",
+        "source": "test_script",
+    })
+    await asyncio.sleep(5)
 
-# Title bar
-draw.rectangle((0, 0, W - 1, 28), fill=0)
-draw.text((8, 6), "MOCHISUKI", fill=255)
+    # ── Test 3: high urgency notification ─────────────────────────────
+    logger.info("Test 3 — high-urgency notification")
+    await display.show_notification({
+        "title": "Alert: CPU Temp",
+        "body": "Core temperature 78°C — above threshold.",
+        "urgency": "high",
+        "source": "sensors",
+    })
+    await asyncio.sleep(5)
 
-# Notification body
-draw.text((8, 36), "Build pipeline #142", fill=0)
-draw.text((8, 52), "Tests failed — check logs", fill=0)
+    # ── Test 4: direct render with canvas ─────────────────────────────
+    logger.info("Test 4 — custom canvas render")
+    with canvas(display.device) as draw:
+        draw.rectangle((0, 0, 127, 63), outline="white", fill=None)
+        draw.text((20, 27), "Test Complete!", fill="white")
+    await asyncio.sleep(3)
 
-# Footer
-draw.line((0, 90, W - 1, 90), fill=0)
-draw.text((8, 96), "urgency: HIGH  |  hermes/notify", fill=0)
+    # ── Clean up ──────────────────────────────────────────────────────
+    logger.info("Tests done — putting display to sleep")
+    await display.show_face("sleeping")
+    await display.sleep()
 
-epd.display(epd.getbuffer(image))
-time.sleep(2)
+    logger.info("=== Test Complete ===")
+    return 0
 
-# 4 ── Idle / sleeping face ────────────────────────────────────────────
-print("Step 4: Sleeping face")
-image = Image.new("1", (W, H), 255)
-draw = ImageDraw.Draw(image)
 
-# Simple ASCII-art style sleeping face
-draw.text((int(W / 2) - 40, 40), "( - _ - ) zZz", fill=0)
-
-epd.display(epd.getbuffer(image))
-time.sleep(2)
-
-# Cleanup
-epd.sleep()
-print("Display test complete — epd.sleep() called")
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -50,7 +50,7 @@ class HermesNotifier:
         """Publish a notification and return the payload that was sent.
 
         Args:
-            title: Short headline (shown on e-ink).
+            title: Short headline (shown on OLED display).
             body: Detail text (optional).
             category: Grouping label — ``ci``, ``alert``, ``system``, etc.
             urgency: ``low`` | ``medium`` | ``high`` | ``critical``.

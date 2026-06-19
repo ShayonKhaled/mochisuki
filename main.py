@@ -2,7 +2,7 @@
 Mochisuki — notification daemon for Raspberry Pi Zero 2 W.
 
 Single-threaded async event loop. Subscribes to Hermes notifications
-via MQTT, drives e-ink display / LEDs / buzzer / gesture sensor.
+via MQTT, drives OLED display / LEDs / buzzer / gesture sensor.
 """
 
 import asyncio

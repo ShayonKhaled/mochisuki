@@ -2,7 +2,7 @@
 
 ## On a MacBook (no Raspberry Pi required)
 
-All four hardware drivers gracefully degrade via `try/except ImportError`. When the RPi-specific packages (`RPi.GPIO`, `rpi-ws281x`, `smbus2`, `waveshare_epd`) aren't installed, the drivers log what they *would* do and return safe defaults.
+All four hardware drivers gracefully degrade via `try/except ImportError`. When the RPi-specific packages (`RPi.GPIO`, `rpi-ws281x`, `smbus2`, `luma.oled`) aren't installed, the drivers log what they *would* do and return safe defaults.
 
 ### 1. Install a local MQTT broker
 
@@ -42,7 +42,7 @@ You'll see:
 [mochisuki.gesture] smbus2 not available — gesture sensor stubbed
 [mochisuki.leds] LEDs stubbed (rpi_ws281x not available)
 [mochisuki.buzzer] Buzzer initialized (PWM pin 13)
-[mochisuki.display] E-ink display stubbed (waveshare_epd not available)
+[mochisuki.display] OLED display stubbed (luma.oled not available)
 [mochisuki.engine] Connecting to MQTT broker at localhost:1883
 [mochisuki.engine] MQTT connected — subscribing to hermes/notify
 ```
