@@ -53,7 +53,7 @@ _GESTURE_CODES = {0: 1, 1: 2, 2: 3, 3: 4}  # index → UP/DOWN/LEFT/RIGHT
 
 # Gesture detection thresholds
 _MIN_TOTAL = 150              # Minimum cumulative signal (L/R only, so lower)
-_DOMINANCE_RATIO = 1.25       # Leading direction must beat runner-up by ≥25%
+_DOMINANCE_RATIO = 1.30       # Leading direction must beat runner-up by ≥30% (anti-flicker)
 
 
 class AsyncGesture:
@@ -65,6 +65,7 @@ class AsyncGesture:
         self.bus = None
         self._last_error_at: float = 0.0
         self._error_count: int = 0
+        self._last_gesture_at: float = 0.0
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -190,6 +191,12 @@ class AsyncGesture:
 
             best_idx = totals.index(max_total)
             code = _GESTURE_CODES[best_idx]
+
+            # Cooldown: ignore further gestures for 500ms (prevents flicker)
+            now = time.monotonic()
+            if now - self._last_gesture_at < 0.5:
+                return 0
+            self._last_gesture_at = now
 
             self._error_count = 0  # reset on success
             logger.debug(
