@@ -52,7 +52,8 @@ _DEVICE_ID = 0xAB        # APDS-9960 ID register value
 _GESTURE_CODES = {0: 1, 1: 2, 2: 3, 3: 4}  # index → UP/DOWN/LEFT/RIGHT
 
 # Gesture detection thresholds
-_MIN_DELTA = 10               # Minimum first→last entry delta to report a gesture
+_MIN_TOTAL = 300              # Minimum cumulative signal (idle ~70-600 settling)
+_DOMINANCE_RATIO = 1.10       # Leading direction must beat runner-up by ≥10%
 
 
 class AsyncGesture:
@@ -93,12 +94,15 @@ class AsyncGesture:
             self._write(_ENABLE, _PON | _PEN | _GENS)  # 0x45
             await asyncio.sleep(0.01)
 
-            # Proximity pulses (needed for gesture on some chip variants)
-            self._write(_PPULSE, 0xFF)   # max pulses for proximity detection
+            # Proximity pulses (reduced — IR LED is strong)
+            self._write(_PPULSE, 0x08)   # 9 pulses (was 255, was saturating)
 
-            # Gesture config (sensitivity: 4x gain, max pulses)
-            self._write(_GCONF1, 0x10)   # GEXTH=1, GFIFOTH=0 (low exit threshold)
-            self._write(_GCONF2, 0x02)   # gain=4x, LED=100mA, both diodes
+            # Proximity gain: 1x (was defaulting to 16x/64x, causing saturation at 255)
+            self._write(_CONTROL, 0x00)  # PGAIN=1x, AGAIN=1x
+
+            # Gesture config (reduced gain — IR LED is strong)
+            self._write(_GCONF1, 0x10)   # GEXTH=1, GFIFOTH=0
+            self._write(_GCONF2, 0x01)   # gain=2x, LED=100mA, both diodes
             self._write(_GPULSE, 0x89)   # 16µs pulse length, 10 pulses
             self._write(_GCONF3, 0x00)   # All 4 directions active (confirmed on this chip)
 
@@ -167,35 +171,31 @@ class AsyncGesture:
             if levels == 0 or levels > 32:
                 return 0
 
-            # Drain FIFO: look at early entries vs late entries
-            first_readings = [0, 0, 0, 0]
-            last_readings = [0, 0, 0, 0]
+            # Drain FIFO: accumulate per-direction totals
+            totals = [0, 0, 0, 0]
 
-            for i in range(min(levels, 32)):
-                u = self._read(_GFIFO_U)
-                d = self._read(_GFIFO_D)
-                l = self._read(_GFIFO_L)
-                r = self._read(_GFIFO_R)
+            for _ in range(min(levels, 32)):
+                totals[0] += self._read(_GFIFO_U)
+                totals[1] += self._read(_GFIFO_D)
+                totals[2] += self._read(_GFIFO_L)
+                totals[3] += self._read(_GFIFO_R)
 
-                if i == 0:
-                    first_readings = [u, d, l, r]
-                last_readings = [u, d, l, r]
+            sorted_vals = sorted(totals, reverse=True)
+            max_total = sorted_vals[0]
+            second_total = sorted_vals[1]
 
-            # Direction with the largest delta (entry-to-entry change) wins
-            deltas = [last_readings[i] - first_readings[i] for i in range(4)]
-            max_delta = max(deltas)
-
-            if max_delta < _MIN_DELTA:
+            ratio = max_total / second_total if second_total > 0 else 99
+            if max_total < _MIN_TOTAL or ratio < _DOMINANCE_RATIO:
                 return 0
 
-            best_idx = deltas.index(max_delta)
+            best_idx = totals.index(max_total)
             code = _GESTURE_CODES[best_idx]
 
             self._error_count = 0  # reset on success
             logger.debug(
-                "Gesture: %s (idx=%d, delta=%d, levels=%d, first=%s, last=%s)",
+                "Gesture: %s (idx=%d, ratio=%.2f, totals=%s, levels=%d)",
                 {1: "UP", 2: "DOWN", 3: "LEFT", 4: "RIGHT"}.get(code, "?"),
-                best_idx, max_delta, levels, first_readings, last_readings,
+                best_idx, ratio, totals, levels,
             )
             return code
 
