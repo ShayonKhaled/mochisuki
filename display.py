@@ -231,35 +231,13 @@ class AsyncDisplay:
             draw.text((_FACE_CX - 6, 41), marker, font=_FONT_BODY,
                       fill=bright)
             _draw_content_centred(draw, msg, 18, brightness=255)
-            _draw_footer(draw, "← dismiss",
+            _draw_footer(draw, "wave ~ dismiss",
                          text_brightness=180, line_brightness=180)
 
         await self._render(_draw, contrast=self._contrast_full)
         logger.info("[display] alert %s [%s]", msg, urgency)
 
-    # ── GESTURE FEEDBACK ─────────────────────────────────────────────
-
-    async def show_gesture(self, action: int) -> None:
-        """Flash the detected gesture on screen for 1 second."""
-        if not self.device:
-            return
-
-        names = {1: "UP", 2: "DOWN", 3: "LEFT", 4: "RIGHT"}
-        label = names.get(action, f"? ({action})")
-
-        # Pick face + arrow
-        faces = {1: "^_^", 2: "v_v", 3: "<_<", 4: ">_>"}
-        face = faces.get(action, "O_O")
-        arrow = {1: " ↑", 2: " ↓", 3: " ←", 4: " →"}.get(action, " ?")
-
-        def _draw(draw):
-            _draw_frame(draw, brightness=255)
-            _draw_face(draw, face, _FACE_Y, brightness=255)
-            _draw_content_centred(draw, label, 16, brightness=255)
-            _draw_footer(draw, arrow, text_brightness=200, line_brightness=200)
-
-        await self._render(_draw, contrast=self._contrast_full)
-        logger.info("[display] gesture: %s", label)
+    # (gesture feedback removed — replaced by VL53L1X ToF wave-to-dismiss)
 
     # ── ACK ───────────────────────────────────────────────────────────
 

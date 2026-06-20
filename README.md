@@ -1,8 +1,8 @@
 # Mochisuki
 
-**Notification daemon for Raspberry Pi Zero W** — listens for notifications via MQTT, then drives an OLED display, NeoPixel LEDs, a piezo buzzer, and a gesture sensor for hands-free interaction.
+**Notification daemon for Raspberry Pi Zero W** — listens for notifications via MQTT, then drives an OLED display, NeoPixel LEDs, a piezo buzzer, and a ToF proximity sensor for wave-to-dismiss.
 
-A Mochisuki device sits on your desk and acts as a physical notification terminal. Any Hermes-compatible agent (or your own scripts) can publish a notification to `hermes/notify`, and the daemon handles the rest: visual display, urgency escalation, snooze/dismiss via gesture, and persistent event logging.
+A Mochisuki device sits on your desk and acts as a physical notification terminal. Any Hermes-compatible agent (or your own scripts) can publish a notification to `hermes/notify`, and the daemon handles the rest: visual display, urgency escalation, wave-to-dismiss, and persistent event logging.
 
 ---
 
@@ -46,7 +46,7 @@ See [docs/testing.md](docs/testing.md) for the full walkthrough.
 | `main.py` | Entry point — `MochisukiEngine` state machine + MQTT client |
 | `config.py` | Pin mappings, MQTT topics, timing constants, colors |
 | `personality.py` | WAL-mode SQLite event store |
-| `gesture.py` / `display.py` / `leds.py` / `buzzer.py` | Async hardware drivers (stub gracefully) |
+| `proximity.py` / `display.py` / `leds.py` / `buzzer.py` | Async hardware drivers (stub gracefully) |
 | `docs/` | Architecture, testing, deployment guides |
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
@@ -59,4 +59,4 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 - **aiomqtt** — async MQTT client (subscribes `hermes/notify`, publishes `hermes/ack`)
 - **microdot** — async HTTP server (webhook endpoint — coming in phase 2)
 - **ProductionLogger** — SQLite with WAL + `synchronous=NORMAL` for SD-card longevity
-- **Hardware** — APDS-9960 (gesture), WS2812B (NeoPixels), ZJY_M242 OLED (SSD1309 128×64 SPI), piezo buzzer
+- **Hardware** — VL53L1X (ToF proximity), WS2812B (NeoPixels), ZJY_M242 OLED (SSD1309 128×64 SPI), piezo buzzer

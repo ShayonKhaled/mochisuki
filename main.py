@@ -2,7 +2,7 @@
 Mochisuki — notification daemon for Raspberry Pi Zero 2 W.
 
 Single-threaded async event loop. Subscribes to Hermes notifications
-via MQTT, drives OLED display / LEDs / buzzer / gesture sensor.
+via MQTT, drives OLED display / LEDs / buzzer / proximity sensor.
 """
 
 import asyncio
@@ -11,14 +11,14 @@ import logging
 import signal
 import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
 import config
 from buzzer import AsyncBuzzer
 from display import AsyncDisplay
-from gesture import AsyncGesture
+from proximity import AsyncProximity
 from leds import AsyncLEDs
 from personality import ProductionLogger
 
@@ -75,7 +75,7 @@ class MochisukiEngine:
         self.display = AsyncDisplay()
         self.leds = AsyncLEDs()
         self.buzzer = AsyncBuzzer()
-        self.gesture = AsyncGesture()
+        self.proximity = AsyncProximity(threshold_mm=config.WAVE_THRESHOLD_MM)
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ class MochisukiEngine:
         """Boot all subsystems and enter the main event loop."""
         logger.info("Mochisuki engine starting — state=IDLE")
 
-        await self.gesture.init()
+        await self.proximity.init()
         await self.leds.init()
         await self.buzzer.init()
         await self.display.init()
@@ -106,16 +106,9 @@ class MochisukiEngine:
                 # Process inbound notifications from MQTT / webhook
                 await self._process_network_queue()
 
-                # Poll gestures in all states (for live display feedback)
-                gesture_input = await self.gesture.read()
-                if gesture_input != 0:
-                    if self.state is AppState.ALERTING:
-                        await self._handle_gesture(gesture_input)
-                    else:
-                        # Live gesture preview — flash and return
-                        await self.display.show_gesture(gesture_input)
-                        await asyncio.sleep(0.3)
-                        await self._transition_to_idle()
+                # Poll proximity for wave-to-dismiss in alerting state
+                if self.state is AppState.ALERTING and await self.proximity.is_wave():
+                    await self._dismiss_alert()
 
                 if self.state is AppState.ALERTING:
                     await self._evaluate_escalations()
@@ -269,7 +262,7 @@ class MochisukiEngine:
             self.current_notification.get("title"),
             self.current_notification.get("urgency"),
         )
-        await self.gesture.enable()
+        await self.proximity.enable()
 
         await self.display.show_alert(self.current_notification)
 
@@ -281,7 +274,7 @@ class MochisukiEngine:
         """Return to idle — silence everything, show always-on face."""
         self.state = AppState.IDLE
         logger.info("→ IDLE")
-        await self.gesture.enable()   # keep polling for live gesture feedback
+        await self.proximity.enable()
         await self.leds.off()
         await self.display.show_idle(connected=self.hermes_connected)
         self.current_notification = None
@@ -311,49 +304,17 @@ class MochisukiEngine:
             logger.debug("Escalation level 1 (%ds)", int(elapsed))
             await self.leds.pulse(self.current_notification["urgency"], speed="slow")
 
-    # ── Gesture Handling ──────────────────────────────────────────────
+    # ── Wave Dismiss ──────────────────────────────────────────────────
 
-    async def _handle_gesture(self, action: int):
-        """Map gesture codes to dismiss / snooze actions."""
+    async def _dismiss_alert(self):
+        """Wave detected — dismiss the current notification."""
         elapsed = int(time.time() - self.alert_start_time)
-
-        # Quick gesture flash
-        await self.display.show_gesture(action)
-        await asyncio.sleep(0.3)
-
-        if action == 3:  # LEFT → Dismiss
-            logger.info("Gesture: LEFT → dismiss")
-            self.db.log_action(self.current_notification["id"], "dismiss", elapsed)
-            await self.leds.flash_ack()
-            await self.buzzer.chime_ack()
-            await self._transition_to_idle()
-
-        elif action == 4:  # RIGHT → Short snooze
-            logger.info("Gesture: RIGHT → short snooze (%ds)", config.SNOOZE_SHORT_SEC)
-            await self._apply_snooze(config.SNOOZE_SHORT_SEC)
-
-        elif action == 2:  # DOWN → Long snooze
-            logger.info("Gesture: DOWN → long snooze (%ds)", config.SNOOZE_LONG_SEC)
-            await self._apply_snooze(config.SNOOZE_LONG_SEC)
-
-        else:
-            logger.debug("Gesture: unknown code %d — ignored", action)
-
-    async def _apply_snooze(self, seconds: int):
-        """Snooze: show snooze screen, then idle + deferred wakeup."""
-        payload = self.current_notification
-        resume_dt = datetime.now() + timedelta(seconds=seconds)
-        resume_time = resume_dt.strftime("%H:%M")
-        await self.display.show_snooze(seconds, resume_time)
-        await asyncio.sleep(2)
+        logger.info("Wave detected — dismiss")
+        self.db.log_action(self.current_notification["id"], "dismiss", elapsed)
+        await self.display.show_ack()
+        await self.leds.flash_ack()
+        await self.buzzer.chime_ack()
         await self._transition_to_idle()
-        asyncio.create_task(self._deferred_alert_wakeup(seconds, payload))
-
-    async def _deferred_alert_wakeup(self, delay: int, payload: dict):
-        """Re-enqueue a notification after snooze delay."""
-        await asyncio.sleep(delay)
-        logger.info("Snooze expired — re-alerting")
-        await self._enqueue_notification(payload)
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────

@@ -39,7 +39,7 @@ You'll see:
 
 ```
 [mochisuki.engine] Mochisuki engine starting — state=IDLE
-[mochisuki.gesture] smbus2 not available — gesture sensor stubbed
+[mochisuki.proximity] vl53l1x not available — proximity sensor stubbed
 [mochisuki.leds] LEDs stubbed (rpi_ws281x not available)
 [mochisuki.buzzer] Buzzer initialized (PWM pin 13)
 [mochisuki.display] OLED display stubbed (luma.oled not available)

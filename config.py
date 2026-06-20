@@ -42,8 +42,7 @@ ESCALATION_1_SEC   = 120    # Level 1: Pulses engage
 ESCALATION_2_SEC   = 300    # Level 2: Intense chimes
 ESCALATION_MAX_SEC = 600    # Timeout: Drop to silent sleep
 
-SNOOZE_SHORT_SEC   = 600    # Right swipe duration
-SNOOZE_LONG_SEC    = 3600   # Down swipe duration
+WAVE_THRESHOLD_MM  = 150    # VL53L1X proximity: object closer than this = wave
 
 # --- Color Array Definitions (R, G, B) ---
 COLOR_IDLE        = (0, 0, 0)         # Unlit

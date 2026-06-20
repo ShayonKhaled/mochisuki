@@ -7,7 +7,7 @@
 | Board | Raspberry Pi Zero 2 W | Headless, no display needed for boot |
 | Display | ZJY_M242 OLED (SSD1309, 128×64) | SPI — 128×64px |
 | LEDs | Adafruit NeoPixel Stick (8× WS2812B) | GPIO 18 — single-wire PWM |
-| Gesture | APDS-9960 breakout | I2C — address 0x39 |
+| Proximity | VL53L1X ToF breakout | I2C — address 0x29 |
 | Audio | Passive piezo buzzer | GPIO 13 — hardware PWM |
 | SD card | 8GB+ Class 10 / A1 | |
 
@@ -18,11 +18,10 @@
 ```
  Pin │ Signal       → Component
 ─────┼──────────────────────────────────
-   1 │ 3.3V         → APDS-9960 VIN
-  17 │ 3.3V         → APDS-9960 VL (IR LED power — both VIN + VL required!)
-   3 │ GPIO 2 (SDA) → APDS-9960 SDA
-   5 │ GPIO 3 (SCL) → APDS-9960 SCL
-   6 │ GND          → APDS-9960 GND
+   1 │ 3.3V         → VL53L1X VIN
+   3 │ GPIO 2 (SDA) → VL53L1X SDA
+   5 │ GPIO 3 (SCL) → VL53L1X SCL
+   6 │ GND          → VL53L1X GND
 ─────┼──────────────────────────────────
    8 │ SPI0 CE0     → OLED CS
   10 │ SPI0 MOSI    → OLED SDA (MOSI)
@@ -36,7 +35,7 @@
 
 ### Notes
 
-- I2C (APDS-9960) uses the dedicated hardware bus on pins 3/5 — no software bit-banging.
+- I2C (VL53L1X) uses the dedicated hardware bus on pins 3/5 — no software bit-banging.
 - SPI (OLED) uses SPI0 at standard pins 8/10/11.
 - GND can be shared across components (pins 6, 9, 14, 20, 25, 30, 34, 39).
 - NeoPixel data-in is a single wire; VCC (5V) and GND should be supplied separately to the stick.

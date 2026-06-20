@@ -11,8 +11,8 @@ Mochisuki runs a single-threaded `asyncio` event loop. All I/O — MQTT, hardwar
   │   publisher) │◀───────────────────────────│                   │
   └──────────────┘  MQTT (hermes/ack)         │  ┌─────────────┐ │
                                               │  │ asyncio.Queue│ │
-  ┌──────────────┐   Gesture (I2C)           │  └─────────────┘ │
-  │ APDS-9960   │◀─────────────────────────▶│  ┌─────────────┐ │
+  ┌──────────────┐   Proximity (I2C)         │  └─────────────┘ │
+  │ VL53L1X ToF │◀─────────────────────────▶│  ┌─────────────┐ │
   │              │                            │  │ StateMachine│ │
   └──────────────┘                            │  │ IDLE        │ │
                                               │  │ ALERTING    │ │
@@ -36,7 +36,7 @@ Mochisuki runs a single-threaded `asyncio` event loop. All I/O — MQTT, hardwar
 │               IDLE                        │
 │  • Display: sleeping face (OLED)          │
 │  • LEDs: off                              │
-│  • Gesture: disabled                      │
+│  • Proximity: enabled (always on)         │
 │  • Buzzer: silent                         │
 └──────────┬───────────────────────────────┘
            │ notification received
@@ -45,7 +45,7 @@ Mochisuki runs a single-threaded `asyncio` event loop. All I/O — MQTT, hardwar
 │              ALERTING                     │
 │  • Display: notification info (OLED)      │
 │  • LEDs: urgency color, pulsing          │
-│  • Gesture: enabled (LEFT/RIGHT/DOWN)    │
+│  • Proximity: polling for wave-to-dismiss│
 │  • Buzzer: initial chime                 │
 │                                           │
 │  Escalation timeline:                     │
@@ -55,7 +55,7 @@ Mochisuki runs a single-threaded `asyncio` event loop. All I/O — MQTT, hardwar
 │    600s     ─ timeout → return to IDLE   │
 └──────┬────────────────┬─────────────────┘
        │                │
-       │ gesture        │ timeout
+       │ wave           │ timeout
        │ (dismiss)      │ (600s)
        ▼                ▼
     ┌──────┐       ┌──────┐
@@ -64,13 +64,7 @@ Mochisuki runs a single-threaded `asyncio` event loop. All I/O — MQTT, hardwar
     └──────┘       └──────┘
 ```
 
-**Gesture map (alerting state only):**
-
-| Gesture | Action |
-|---|---|
-| LEFT swipe | Dismiss notification |
-| RIGHT swipe | Snooze 10 min |
-| DOWN swipe | Snooze 60 min |
+**Wave dismiss:** When the VL53L1X ToF sensor detects an object within ~150mm while in ALERTING state, the notification is dismissed (LED ack flash + buzzer chime → return to IDLE). Simple, no snooze, no directional gestures.
 
 ## MQTT flow
 
