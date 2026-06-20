@@ -43,18 +43,16 @@ _GFIFO_R  = 0xFF
 
 # ── Bit masks / constants ──────────────────────────────────────────────
 _PON       = 0x01
+_PEN       = 0x04
 _GENS      = 0x40
-_GVALID    = 0x04        # Bit 2 in GSTATUS
+_GVALID    = 0x01        # Bit 0 in GSTATUS (varies by chip revision — 0x01 on this one)
 _GMODE     = 0x01        # Bit 0 in GCONF4
 _DEVICE_ID = 0xAB        # APDS-9960 ID register value
 
 _GESTURE_CODES = {0: 1, 1: 2, 2: 3, 3: 4}  # index → UP/DOWN/LEFT/RIGHT
 
-# Gesture detection: minimum cumulative FIFO signal to report a direction
-_MIN_GESTURE_TOTAL = 30
-
-# How many consecutive noise samples silence gesture detection
-_SILENCE_AFTER_READS = 3
+# Gesture detection thresholds
+_MIN_DELTA = 10               # Minimum first→last entry delta to report a gesture
 
 
 class AsyncGesture:
@@ -66,7 +64,6 @@ class AsyncGesture:
         self.bus = None
         self._last_error_at: float = 0.0
         self._error_count: int = 0
-        self._silence_count: int = 0
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -76,15 +73,14 @@ class AsyncGesture:
             from smbus2 import SMBus
             self.bus = SMBus(1)
 
-            # Verify device ID
+            # Verify device ID (warn on mismatch, but continue — some clones use different IDs)
             dev_id = self.bus.read_byte_data(self.address, _ID)
             if dev_id != _DEVICE_ID:
                 logger.warning(
-                    "APDS-9960 ID mismatch: got 0x%02X, expected 0x%02X",
+                    "Gesture sensor ID mismatch: got 0x%02X, expected 0x%02X — "
+                    "continuing with APDS-9960-compatible init",
                     dev_id, _DEVICE_ID,
                 )
-                self.bus = None
-                return
 
             # Power on
             self._write(_ENABLE, _PON)
@@ -93,15 +89,18 @@ class AsyncGesture:
             # ALS integration: max duration (minimises ALS noise)
             self._write(_ATIME, 0xFF)
 
-            # Enable gesture engine
-            self._write(_ENABLE, _PON | _GENS)  # 0x41
+            # Enable proximity + gesture engines
+            self._write(_ENABLE, _PON | _PEN | _GENS)  # 0x45
             await asyncio.sleep(0.01)
 
-            # Gesture config
-            self._write(_GCONF1, 0x60)   # GEXTH=6, GFIFOTH=0
-            self._write(_GCONF2, 0x01)   # gain=2x, LED=100mA, both diodes
+            # Proximity pulses (needed for gesture on some chip variants)
+            self._write(_PPULSE, 0xFF)   # max pulses for proximity detection
+
+            # Gesture config (sensitivity: 4x gain, max pulses)
+            self._write(_GCONF1, 0x10)   # GEXTH=1, GFIFOTH=0 (low exit threshold)
+            self._write(_GCONF2, 0x02)   # gain=4x, LED=100mA, both diodes
             self._write(_GPULSE, 0x89)   # 16µs pulse length, 10 pulses
-            self._write(_GCONF3, 0x00)   # 2D dimension (all axes)
+            self._write(_GCONF3, 0x00)   # All 4 directions active (confirmed on this chip)
 
             # Enter gesture mode
             self._write(_GCONF4, _GMODE)
@@ -135,13 +134,11 @@ class AsyncGesture:
         """Activate gesture polling."""
         self._enabled = True
         self._error_count = 0
-        self._silence_count = 0
         logger.debug("Gesture polling enabled")
 
     async def disable(self):
         """Deactivate gesture polling."""
         self._enabled = False
-        self._silence_count = 0
         logger.debug("Gesture polling disabled")
 
     # ── Gesture detection ────────────────────────────────────────────
@@ -170,39 +167,35 @@ class AsyncGesture:
             if levels == 0 or levels > 32:
                 return 0
 
-            # Drain the FIFO: accumulate per-direction totals
-            totals = [0, 0, 0, 0]  # U, D, L, R
-            count = 0
+            # Drain FIFO: look at early entries vs late entries
+            first_readings = [0, 0, 0, 0]
+            last_readings = [0, 0, 0, 0]
 
-            for _ in range(min(levels, 32)):
+            for i in range(min(levels, 32)):
                 u = self._read(_GFIFO_U)
                 d = self._read(_GFIFO_D)
                 l = self._read(_GFIFO_L)
                 r = self._read(_GFIFO_R)
 
-                totals[0] += u
-                totals[1] += d
-                totals[2] += l
-                totals[3] += r
-                count += 1
+                if i == 0:
+                    first_readings = [u, d, l, r]
+                last_readings = [u, d, l, r]
 
-            # If the readings are all tiny, it's noise — silence briefly
-            max_total = max(totals)
-            if max_total < _MIN_GESTURE_TOTAL:
-                self._silence_count += 1
-                if self._silence_count >= _SILENCE_AFTER_READS:
-                    logger.debug("Gesture: noise floor — silenced")
+            # Direction with the largest delta (entry-to-entry change) wins
+            deltas = [last_readings[i] - first_readings[i] for i in range(4)]
+            max_delta = max(deltas)
+
+            if max_delta < _MIN_DELTA:
                 return 0
 
-            self._silence_count = 0
-            best_idx = totals.index(max_total)
+            best_idx = deltas.index(max_delta)
             code = _GESTURE_CODES[best_idx]
 
             self._error_count = 0  # reset on success
             logger.debug(
-                "Gesture: %s (idx=%d, totals=%s, levels=%d)",
+                "Gesture: %s (idx=%d, delta=%d, levels=%d, first=%s, last=%s)",
                 {1: "UP", 2: "DOWN", 3: "LEFT", 4: "RIGHT"}.get(code, "?"),
-                best_idx, totals, levels,
+                best_idx, max_delta, levels, first_readings, last_readings,
             )
             return code
 
