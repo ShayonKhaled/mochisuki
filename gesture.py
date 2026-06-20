@@ -52,8 +52,8 @@ _DEVICE_ID = 0xAB        # APDS-9960 ID register value
 _GESTURE_CODES = {0: 1, 1: 2, 2: 3, 3: 4}  # index → UP/DOWN/LEFT/RIGHT
 
 # Gesture detection thresholds
-_MIN_TOTAL = 300              # Minimum cumulative signal (idle ~70-600 settling)
-_DOMINANCE_RATIO = 1.10       # Leading direction must beat runner-up by ≥10%
+_MIN_TOTAL = 150              # Minimum cumulative signal (L/R only, so lower)
+_DOMINANCE_RATIO = 1.25       # Leading direction must beat runner-up by ≥25%
 
 
 class AsyncGesture:
@@ -104,7 +104,7 @@ class AsyncGesture:
             self._write(_GCONF1, 0x10)   # GEXTH=1, GFIFOTH=0
             self._write(_GCONF2, 0x01)   # gain=2x, LED=100mA, both diodes
             self._write(_GPULSE, 0x89)   # 16µs pulse length, 10 pulses
-            self._write(_GCONF3, 0x00)   # All 4 directions active (confirmed on this chip)
+            self._write(_GCONF3, 0x02)   # L/R only — U/D zeroed out (UP bias was drowning RIGHT)
 
             # Enter gesture mode
             self._write(_GCONF4, _GMODE)
