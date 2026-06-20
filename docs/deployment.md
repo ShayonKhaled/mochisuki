@@ -18,10 +18,10 @@
 ```
  Pin │ Signal       → Component
 ─────┼──────────────────────────────────
-   1 │ 3.3V         → VL53L1X VIN
+   1 │ 3.3V         → VL53L1X VIN + OLED VCC
    3 │ GPIO 2 (SDA) → VL53L1X SDA
    5 │ GPIO 3 (SCL) → VL53L1X SCL
-   6 │ GND          → VL53L1X GND
+   6 │ GND          → VL53L1X GND + OLED GND
 ─────┼──────────────────────────────────
    8 │ SPI0 CE0     → OLED CS
   10 │ SPI0 MOSI    → OLED SDA (MOSI)
