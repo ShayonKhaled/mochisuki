@@ -309,6 +309,10 @@ class MochisukiEngine:
         """Map gesture codes to dismiss / snooze actions."""
         elapsed = int(time.time() - self.alert_start_time)
 
+        # Show gesture feedback on screen for 1s
+        await self.display.show_gesture(action)
+        await asyncio.sleep(1)
+
         if action == 3:  # LEFT → Dismiss
             logger.info("Gesture: LEFT → dismiss")
             self.db.log_action(self.current_notification["id"], "dismiss", elapsed)
