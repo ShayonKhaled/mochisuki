@@ -104,7 +104,7 @@ class AsyncGesture:
             # Gesture config (reduced gain — IR LED is strong)
             self._write(_GCONF1, 0x10)   # GEXTH=1, GFIFOTH=0
             self._write(_GCONF2, 0x01)   # gain=2x, LED=100mA, both diodes
-            self._write(_GPULSE, 0x9F)   # 16µs pulse length, 32 pulses (was 10)
+            self._write(_GPULSE, 0x89)   # 16µs pulse length, 10 pulses
             self._write(_GCONF3, 0x02)   # L/R only — U/D zeroed out (UP bias was drowning RIGHT)
 
             # Enter gesture mode
