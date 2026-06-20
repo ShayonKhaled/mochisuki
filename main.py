@@ -106,10 +106,18 @@ class MochisukiEngine:
                 # Process inbound notifications from MQTT / webhook
                 await self._process_network_queue()
 
-                if self.state is AppState.ALERTING:
-                    gesture_input = await self.gesture.read()
-                    if gesture_input != 0:
+                # Poll gestures in all states (for live display feedback)
+                gesture_input = await self.gesture.read()
+                if gesture_input != 0:
+                    if self.state is AppState.ALERTING:
                         await self._handle_gesture(gesture_input)
+                    else:
+                        # Live gesture preview on idle screen
+                        await self.display.show_gesture(gesture_input)
+                        await asyncio.sleep(1)
+                        await self._transition_to_idle()
+
+                if self.state is AppState.ALERTING:
                     await self._evaluate_escalations()
 
                 # 20 Hz target — give other tasks room to breathe
@@ -273,7 +281,7 @@ class MochisukiEngine:
         """Return to idle — silence everything, show always-on face."""
         self.state = AppState.IDLE
         logger.info("→ IDLE")
-        await self.gesture.disable()
+        await self.gesture.enable()   # keep polling for live gesture feedback
         await self.leds.off()
         await self.display.show_idle(connected=self.hermes_connected)
         self.current_notification = None
