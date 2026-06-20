@@ -19,6 +19,7 @@
  Pin │ Signal       → Component
 ─────┼──────────────────────────────────
    1 │ 3.3V         → APDS-9960 VIN
+  17 │ 3.3V         → APDS-9960 VL (IR LED power — both VIN + VL required!)
    3 │ GPIO 2 (SDA) → APDS-9960 SDA
    5 │ GPIO 3 (SCL) → APDS-9960 SCL
    6 │ GND          → APDS-9960 GND
