@@ -171,10 +171,10 @@ class AsyncGesture:
             if levels == 0 or levels > 32:
                 return 0
 
-            # Drain FIFO: accumulate per-direction totals
+            # Drain FIFO: read first ~5 entries (plenty for direction, way faster than 32)
             totals = [0, 0, 0, 0]
-
-            for _ in range(min(levels, 32)):
+            n = min(levels, 5)
+            for _ in range(n):
                 totals[0] += self._read(_GFIFO_U)
                 totals[1] += self._read(_GFIFO_D)
                 totals[2] += self._read(_GFIFO_L)

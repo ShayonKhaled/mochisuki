@@ -112,9 +112,9 @@ class MochisukiEngine:
                     if self.state is AppState.ALERTING:
                         await self._handle_gesture(gesture_input)
                     else:
-                        # Live gesture preview on idle screen
+                        # Live gesture preview — flash and return
                         await self.display.show_gesture(gesture_input)
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(0.3)
                         await self._transition_to_idle()
 
                 if self.state is AppState.ALERTING:
@@ -317,17 +317,15 @@ class MochisukiEngine:
         """Map gesture codes to dismiss / snooze actions."""
         elapsed = int(time.time() - self.alert_start_time)
 
-        # Show gesture feedback on screen for 1s
+        # Quick gesture flash
         await self.display.show_gesture(action)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.3)
 
         if action == 3:  # LEFT → Dismiss
             logger.info("Gesture: LEFT → dismiss")
             self.db.log_action(self.current_notification["id"], "dismiss", elapsed)
             await self.leds.flash_ack()
             await self.buzzer.chime_ack()
-            await self.display.show_ack()
-            await asyncio.sleep(2)
             await self._transition_to_idle()
 
         elif action == 4:  # RIGHT → Short snooze
