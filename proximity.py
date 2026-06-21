@@ -29,7 +29,7 @@ class AsyncProximity:
     ``is_wave()`` check suitable for "wave to dismiss" UI.
     """
 
-    def __init__(self, threshold_mm: int = 150, mode: int = _MODE_SHORT):
+    def __init__(self, threshold_mm: int = 100, mode: int = _MODE_SHORT):
         self.address = _I2C_ADDR
         self.threshold_mm = threshold_mm
         self._mode = mode
@@ -39,13 +39,14 @@ class AsyncProximity:
         self._cooldown = 1.0          # seconds between wave triggers
         self._last_error_at: float = 0.0
         self._error_count: int = 0
+        self._wave_pending = False     # near reading seen during cooldown
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
     async def init(self):
         """Initialise the VL53L1X: open I2C, start continuous ranging."""
         try:
-            import vl53l1x
+            import VL53L1X as vl53l1x
 
             self._sensor = vl53l1x.VL53L1X(
                 i2c_bus=1,
@@ -69,9 +70,11 @@ class AsyncProximity:
     # ── Enable / Disable ─────────────────────────────────────────────
 
     async def enable(self):
-        """Activate proximity polling."""
+        """Activate proximity polling with startup cooldown."""
         self._enabled = True
         self._error_count = 0
+        self._last_wave_at = time.monotonic()
+        self._wave_pending = False
         logger.debug("Proximity polling enabled")
 
     async def disable(self):
@@ -110,23 +113,47 @@ class AsyncProximity:
             return 0
 
     async def is_wave(self) -> bool:
-        """Check for wave gesture — object within threshold distance.
+        """Check for wave gesture — hand within *threshold_mm* of sensor.
+
+        A wave is any reading where the distance is below *threshold_mm*
+        (default 100 mm / 10 cm) and the sensor is not returning an error.
+
+        A 1-second startup cooldown prevents stray first-read noise.
+        If a qualifying hand-close occurs during cooldown, it is
+        remembered via ``_wave_pending`` and fires immediately when
+        the cooldown expires — even if the hand has already moved away.
 
         Returns:
-            True if an object is closer than ``threshold_mm`` and
-            the cooldown period has elapsed since the last wave.
+            True if a hand was detected within threshold distance.
         """
         if not self._enabled:
             return False
 
         dist = await self.read_distance()
-        if dist == 0 or dist > self.threshold_mm:
-            return False
-
         now = time.monotonic()
-        if now - self._last_wave_at < self._cooldown:
+        in_cooldown = (now - self._last_wave_at) < self._cooldown
+
+        # Error / glitch readings — skip
+        if dist <= 0:
             return False
 
+        # Hand must be within threshold distance
+        if dist > self.threshold_mm:
+            return False
+
+        # Hand is near!  If still in startup cooldown, remember and wait
+        if in_cooldown:
+            self._wave_pending = True
+            return False
+
+        # Cooldown expired — fire any pending wave first
+        if self._wave_pending:
+            self._wave_pending = False
+            self._last_wave_at = now
+            logger.info("Wave detected (pending)")
+            return True
+
+        # Fresh wave after cooldown
         self._last_wave_at = now
         logger.info("Wave detected: %d mm", dist)
         return True

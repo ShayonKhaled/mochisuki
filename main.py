@@ -69,6 +69,7 @@ class MochisukiEngine:
 
         # Hermes / MQTT connection state
         self.hermes_connected: bool = False
+        self._last_idle_refresh: float = 0.0
 
         # Subsystems
         self.db = ProductionLogger(config.DB_PATH)
@@ -113,10 +114,20 @@ class MochisukiEngine:
                 if self.state is AppState.ALERTING:
                     await self._evaluate_escalations()
 
-                # 20 Hz target — give other tasks room to breathe
+                # Refresh idle display every ~2s for sleep animation
+                if self.state is AppState.IDLE:
+                    now_t = time.monotonic()
+                    if now_t - self._last_idle_refresh >= 2.0:
+                        self._last_idle_refresh = now_t
+                        await self.display.show_idle(
+                            connected=self.hermes_connected
+                        )
+
+                # Sleep to yield CPU — shorter in alerting, longer in idle
+                sleep_s = 0.05 if self.state is AppState.ALERTING else 0.25
                 done, _ = await asyncio.wait(
                     pending,
-                    timeout=0.05,
+                    timeout=sleep_s,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if mqtt_wake_task in done:
@@ -274,7 +285,7 @@ class MochisukiEngine:
         """Return to idle — silence everything, show always-on face."""
         self.state = AppState.IDLE
         logger.info("→ IDLE")
-        await self.proximity.enable()
+        await self.proximity.disable()
         await self.leds.off()
         await self.display.show_idle(connected=self.hermes_connected)
         self.current_notification = None

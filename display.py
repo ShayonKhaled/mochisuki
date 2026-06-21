@@ -130,6 +130,7 @@ class AsyncDisplay:
         self.device = None
         self.width = 128
         self.height = 64
+        self._idle_frame = 0
 
     async def init(self):
         """Initialise the SSD1309 over SPI. Falls back to stub on ImportError."""
@@ -173,27 +174,35 @@ class AsyncDisplay:
 
     async def show_idle(self, connected: bool = True,
                         now: datetime = None) -> None:
-        """Sleeping face left, clock right."""
+        """Sleeping face left, clock right — animated frame by frame."""
         if not self.device:
             logger.info("[display] idle (connected=%s)", connected)
             return
         now = now or datetime.now()
         time_str = now.strftime("%H:%M")
 
+        # Alternate between sleep states for a gentle breathing animation
+        eyes = ["(._.)", "(∪.∪)", "(._.)", "(u.u)"]
+        zzzs = [" z", " zz", "zzz", " zz"]
+        frame = self._idle_frame % len(eyes)
+        face = eyes[frame]
+        zzz = zzzs[frame]
+        self._idle_frame += 1
+
         def _draw(draw):
             _draw_frame(draw, brightness=80)
-            _draw_face(draw, FACES["idle"], _FACE_Y, brightness=180)
+            _draw_face(draw, face, _FACE_Y, brightness=180)
             _draw_content_centred(draw, time_str, 18, brightness=180)
             # Connection dot under the face
             dot = "•" if connected else "○"
             w = _FONT_BODY.getbbox(dot)[2]
             draw.text((_FACE_CX - w // 2, 40), dot, font=_FONT_BODY,
                       fill=120 if connected else 50)
-            _draw_footer(draw, "  zzz",
+            _draw_footer(draw, zzz,
                          text_brightness=80, line_brightness=60)
 
         await self._render(_draw, contrast=self._contrast_dim)
-        logger.debug("[display] idle %s  %s", time_str, "OK" if connected else "??")
+        logger.debug("[display] idle %s  %s  %s", time_str, "OK" if connected else "??", face)
 
     # ── ALERT ─────────────────────────────────────────────────────────
 
@@ -252,7 +261,7 @@ class AsyncDisplay:
             _draw_face(draw, FACES["happy"], _FACE_Y, brightness=255)
             _draw_content_centred(draw, "got it!", 10, brightness=200)
             _draw_content_centred(draw, "*", 26, brightness=100)
-            _draw_footer(draw, "goodnight",
+            _draw_footer(draw, "back to sleep",
                          text_brightness=120, line_brightness=120)
 
         await self._render(_draw, contrast=self._contrast_full)
