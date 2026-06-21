@@ -183,10 +183,10 @@ class AsyncDisplay:
 
         # Alternate between sleep states for a gentle breathing animation
         eyes = ["(._.)", "(∪.∪)", "(._.)", "(u.u)"]
-        zzzs = [" z", " zz", "zzz", " zz"]
-        frame = self._idle_frame % len(eyes)
-        face = eyes[frame]
-        zzz = zzzs[frame]
+        zzzs = ["", "z", "zz", "zzz", ""]
+        frame = self._idle_frame
+        face = eyes[frame % len(eyes)]
+        zzz = zzzs[frame % len(zzzs)]
         self._idle_frame += 1
 
         def _draw(draw):
