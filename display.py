@@ -240,7 +240,7 @@ class AsyncDisplay:
             draw.text((_FACE_CX - 6, 41), marker, font=_FONT_BODY,
                       fill=bright)
             _draw_content_centred(draw, msg, 18, brightness=255)
-            _draw_footer(draw, "wave ~ dismiss",
+            _draw_footer(draw, "wave →",
                          text_brightness=180, line_brightness=180)
 
         await self._render(_draw, contrast=self._contrast_full)
@@ -315,7 +315,18 @@ class AsyncDisplay:
         await self.show_alert(payload)
 
     async def show_face(self, name: str) -> None:
-        await self.show_idle(connected=True)
+        """Show a named face from ``FACES``. Falls back to idle if unknown."""
+        if not self.device:
+            logger.info("[display] face: %s", name)
+            return
+
+        face = FACES.get(name, FACES["idle"])
+        def _draw(draw):
+            _draw_frame(draw, brightness=180)
+            _draw_face(draw, face, _FACE_Y, brightness=200)
+            _draw_footer(draw, name, text_brightness=80, line_brightness=60)
+        await self._render(_draw, contrast=self._contrast_dim)
+        logger.debug("[display] face: %s", name)
 
     async def sleep(self) -> None:
         if self.device:

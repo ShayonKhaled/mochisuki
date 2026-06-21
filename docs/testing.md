@@ -126,7 +126,7 @@ Send a `critical` notification, then a `low` one — the low one is ignored beca
 
 ## Automated tests
 
-Currently no test suite. To add one, look at the `test` skill in `.reasonix/`.
+Currently no automated test suite.
 
 ---
 

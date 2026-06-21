@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -5,10 +6,13 @@ from pathlib import Path
 class ProductionLogger:
     """Persistent event store with WAL-mode SQLite for SD-card longevity."""
 
+    _CLEANUP_EVERY = 50   # call cleanup_old_events every N inserts
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize_database()
+        self._insert_count: int = 0
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -43,6 +47,21 @@ class ProductionLogger:
                     target.get("urgency", "low"),
                 )
             )
+        self._insert_count += 1
+        if self._insert_count % self._CLEANUP_EVERY == 0:
+            self.cleanup_old_events()
+
+    def cleanup_old_events(self, max_age_days: int = 30):
+        """Purge events older than *max_age_days* to prevent unbounded DB growth."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM events WHERE received_at < datetime('now', ?)",
+                (f"-{max_age_days} days",),
+            )
+        deleted = cursor.rowcount
+        if deleted:
+            logger = logging.getLogger("mochisuki.db")
+            logger.info("Cleaned %d old event(s) (>%d days)", deleted, max_age_days)
 
     def log_action(self, notification_id: str, action: str, response_time_sec: int):
         with self._get_connection() as conn:

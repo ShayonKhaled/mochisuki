@@ -32,9 +32,15 @@ MQTT_PORT       = int(os.getenv("MQTT_PORT", 1883))
 MQTT_TOPIC_SUB  = "hermes/notify"
 MQTT_TOPIC_ACK  = "hermes/ack"
 MQTT_CLIENT_ID  = "mochisuki-v1"
+MQTT_USERNAME   = os.getenv("MQTT_USERNAME")     # Optional — broker auth
+MQTT_PASSWORD   = os.getenv("MQTT_PASSWORD")     # Optional — broker auth
+MQTT_TLS        = os.getenv("MQTT_TLS", "false").lower() == "true"
 
 WEBHOOK_HOST    = "0.0.0.0"
 WEBHOOK_PORT    = 5000
+# ⚠ WARNING: When phase 2 is wired in, the webhook handler MUST validate
+#    Authorization: Bearer {WEBHOOK_SECRET} before processing any request.
+#    Do not enable the microdot server without this check.
 WEBHOOK_SECRET  = os.getenv("WEBHOOK_SECRET")
 
 # --- Timing Metrics (Seconds) ---

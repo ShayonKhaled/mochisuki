@@ -110,6 +110,10 @@ from hermes.notify import HermesNotifier
 
 notifier = HermesNotifier("10.0.0.50")  # Mochisuki's IP or Tailscale IP
 
+# With broker auth (if configured):
+notifier = HermesNotifier("10.0.0.50",
+                          username="mochisuki", password="your-password")
+
 # Simple ping test
 notifier.ping("hello")
 

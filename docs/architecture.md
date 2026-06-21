@@ -64,7 +64,7 @@ Mochisuki runs a single-threaded `asyncio` event loop. All I/O — MQTT, hardwar
     └──────┘       └──────┘
 ```
 
-**Wave dismiss:** When the VL53L1X ToF sensor detects an object within ~150mm while in ALERTING state, the notification is dismissed (LED ack flash + buzzer chime → return to IDLE). Simple, no snooze, no directional gestures.
+**Wave dismiss:** When the VL53L1X ToF sensor detects an object within ~100mm while in ALERTING state, the notification is dismissed (LED ack flash + buzzer chime → return to IDLE). Simple, no snooze, no directional gestures.
 
 ## MQTT flow
 

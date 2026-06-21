@@ -11,7 +11,7 @@ Any MQTT client can publish a notification to this topic.
 ```json
 {
   "id":       "string",   // required — unique notification id
-  "title":    "string",   // required — short headline
+  "title":    "string",   // optional — short headline (shown on OLED)
   "body":     "string",   // optional — detail text
   "category": "string",   // optional — grouping category, default "general"
   "urgency":  "string",   // optional — "low" | "medium" | "high" | "critical", default "low"
@@ -21,7 +21,7 @@ Any MQTT client can publish a notification to this topic.
 
 **Urgency priority order:** `low` (1) < `medium` (2) < `high` (3) < `critical` (4)
 
-A notification can only replace the current one if its urgency is ≥ the current urgency. Lower-urgency notifications are silently dropped.
+A notification can only replace the current one if its urgency is strictly higher than the current urgency. Equal-urgency notifications are silently dropped (the current notification keeps its escalation timer).
 
 **Example:**
 

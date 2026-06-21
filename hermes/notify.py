@@ -36,11 +36,16 @@ class HermesNotifier:
     """
 
     def __init__(self, broker_host: str = "localhost", port: int = 1883,
-                 source: str = "hermes", client_id: Optional[str] = None):
+                 source: str = "hermes", client_id: Optional[str] = None,
+                 username: Optional[str] = None, password: Optional[str] = None,
+                 tls: bool = False):
         self.broker_host = broker_host
         self.port = port
         self.source = source
         self.client_id = client_id or f"hermes-{uuid.uuid4().hex[:8]}"
+        self.username = username
+        self.password = password
+        self.tls = tls
         self._client = None
 
     # ── Public API ────────────────────────────────────────────────────
@@ -89,7 +94,14 @@ class HermesNotifier:
             print("paho-mqtt not installed. Run: pip install paho-mqtt",
                   file=sys.stderr)
             sys.exit(1)
-        self._client = mqtt.Client(client_id=self.client_id)
+        self._client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=self.client_id,
+        )
+        if self.username and self.password:
+            self._client.username_pw_set(self.username, self.password)
+        if self.tls:
+            self._client.tls_set()
         self._client.connect(self.broker_host, self.port)
         self._client.loop_start()  # background network thread
 
@@ -107,18 +119,26 @@ def _cli():
     p.add_argument("--broker", default="localhost", help="MQTT broker host")
     p.add_argument("--port", type=int, default=1883)
     p.add_argument("--source", default="hermes-cli")
-    p.add_argument("--title", required=True, help="Notification headline")
+    p.add_argument("--title", default="", help="Notification headline")
     p.add_argument("--body", default="", help="Detail text")
     p.add_argument("--urgency", default="low",
                    choices=["low", "medium", "high", "critical"])
     p.add_argument("--category", default="general")
     p.add_argument("--ping", action="store_true", help="Send a quick test ping")
+    p.add_argument("--username", default=None, help="MQTT broker username")
+    p.add_argument("--password", default=None, help="MQTT broker password")
+    p.add_argument("--tls", action="store_true", help="Enable TLS for broker connection")
     args = p.parse_args()
+
+    if not args.ping and not args.title:
+        p.error("--title is required unless --ping is set")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s",
                         datefmt="%H:%M:%S")
 
-    notifier = HermesNotifier(args.broker, args.port, source=args.source)
+    notifier = HermesNotifier(args.broker, args.port, source=args.source,
+                               username=args.username, password=args.password,
+                               tls=args.tls)
 
     if args.ping:
         notifier.ping("cli-test")

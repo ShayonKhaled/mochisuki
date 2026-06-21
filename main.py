@@ -70,6 +70,8 @@ class MochisukiEngine:
         # Hermes / MQTT connection state
         self.hermes_connected: bool = False
         self._last_idle_refresh: float = 0.0
+        # Escalation level guard (set once per level transition, never retriggered on same tick)
+        self._escalation_level: int = 0
 
         # Subsystems
         self.db = ProductionLogger(config.DB_PATH)
@@ -93,6 +95,8 @@ class MochisukiEngine:
         # Network listeners run as concurrent tasks
         mqtt_task = asyncio.create_task(self.start_mqtt_client())
         # webhook_task = asyncio.create_task(self.start_webhook_server())  # TODO: phase 2
+        # ⚠ When phase 2 is enabled, the handler MUST validate
+        #    Authorization: Bearer {config.WEBHOOK_SECRET} before processing.
 
         shutdown_task = asyncio.create_task(self._shutdown_event.wait())
         mqtt_wake_task = asyncio.create_task(self._mqtt_wake.wait())
@@ -167,18 +171,22 @@ class MochisukiEngine:
             except json.JSONDecodeError:
                 logger.warning("MQTT: non-JSON message dropped")
                 return
+            # Validate before ack — only ack payloads that can be processed
+            if not isinstance(payload, dict) or "id" not in payload:
+                logger.warning("MQTT: payload missing 'id' or not a dict — dropped")
+                return
             self._mqtt_queue.append(payload)
             self._mqtt_wake.set()
             # Publish ack from this thread (paho's publish is thread-safe)
             ack = {
-                "id": payload.get("id", "unknown"),
+                "id": payload["id"],
                 "status": "received",
                 "device": "mochisuki-v1",
                 "timestamp": time.time(),
             }
             _client.publish(config.MQTT_TOPIC_ACK, json.dumps(ack))
             logger.info("MQTT ack published to %s for %s",
-                         config.MQTT_TOPIC_ACK, payload.get("id", "unknown"))
+                         config.MQTT_TOPIC_ACK, payload["id"])
 
         while not self._shutdown_event.is_set():
             try:
@@ -189,6 +197,11 @@ class MochisukiEngine:
                 c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                                 client_id=config.MQTT_CLIENT_ID)
                 c.on_message = _on_message
+                # Optional broker authentication
+                if config.MQTT_USERNAME and config.MQTT_PASSWORD:
+                    c.username_pw_set(config.MQTT_USERNAME, config.MQTT_PASSWORD)
+                if config.MQTT_TLS:
+                    c.tls_set()
                 c.connect(config.MQTT_BROKER, config.MQTT_PORT)
                 c.subscribe(config.MQTT_TOPIC_SUB)
                 c.loop_start()
@@ -229,6 +242,12 @@ class MochisukiEngine:
         if "id" not in payload:
             logger.warning("Notification missing 'id' — dropped")
             return
+        if len(payload["id"]) > 64:
+            logger.warning(
+                "Notification 'id' too long (%d chars, max 64) — dropped",
+                len(payload["id"]),
+            )
+            return
 
         logger.info(
             "Notification enqueued: %s [%s] <%s>",
@@ -253,14 +272,18 @@ class MochisukiEngine:
             self.queue.task_done()
 
     def _should_replace(self, payload: dict) -> bool:
-        """Only upgrade urgency, never downgrade."""
+        """Only upgrade urgency, never downgrade.
+
+        Strictly-greater (``>``) means equal urgencies do NOT replace —
+        the first notification keeps its escalation timer and display slot.
+        """
         if not self.current_notification:
             return True
         new_urgency = URGENCY_ORDER.get(payload.get("urgency", "low"), 1)
         cur_urgency = URGENCY_ORDER.get(
             self.current_notification.get("urgency", "low"), 1
         )
-        return new_urgency >= cur_urgency
+        return new_urgency > cur_urgency
 
     # ── State Transitions ─────────────────────────────────────────────
 
@@ -284,6 +307,7 @@ class MochisukiEngine:
     async def _transition_to_idle(self):
         """Return to idle — silence everything, show always-on face."""
         self.state = AppState.IDLE
+        self._escalation_level = 0
         logger.info("→ IDLE")
         await self.proximity.disable()
         await self.leds.off()
@@ -293,7 +317,11 @@ class MochisukiEngine:
     # ── Escalation ────────────────────────────────────────────────────
 
     async def _evaluate_escalations(self):
-        """Check elapsed alert time and escalate or time out."""
+        """Check elapsed alert time and escalate or time out.
+
+        Each escalation branch fires exactly once — ``_escalation_level``
+        gates re-entry so hardware is not retriggered on every 50 ms tick.
+        """
         elapsed = time.time() - self.alert_start_time
 
         if elapsed > config.ESCALATION_MAX_SEC:
@@ -306,12 +334,14 @@ class MochisukiEngine:
             await asyncio.sleep(3)
             await self._transition_to_idle()
 
-        elif elapsed > config.ESCALATION_2_SEC:
+        elif elapsed > config.ESCALATION_2_SEC and self._escalation_level < 2:
+            self._escalation_level = 2
             logger.debug("Escalation level 2 (%ds)", int(elapsed))
             await self.leds.pulse(self.current_notification["urgency"], speed="fast")
             await self.buzzer.chime_escalate_2()
 
-        elif elapsed > config.ESCALATION_1_SEC:
+        elif elapsed > config.ESCALATION_1_SEC and self._escalation_level < 1:
+            self._escalation_level = 1
             logger.debug("Escalation level 1 (%ds)", int(elapsed))
             await self.leds.pulse(self.current_notification["urgency"], speed="slow")
 
