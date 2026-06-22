@@ -69,6 +69,7 @@ class MochisukiEngine:
 
         # Hermes / MQTT connection state
         self.hermes_connected: bool = False
+        self._last_notification_time: Optional[float] = None
         self._last_idle_refresh: float = 0.0
         # Escalation level guard (set once per level transition, never retriggered on same tick)
         self._escalation_level: int = 0
@@ -124,7 +125,8 @@ class MochisukiEngine:
                     if now_t - self._last_idle_refresh >= 2.0:
                         self._last_idle_refresh = now_t
                         await self.display.show_idle(
-                            connected=self.hermes_connected
+                            connected=self.hermes_connected,
+                            last_notification_time=self._last_notification_time,
                         )
 
                 # Sleep to yield CPU — shorter in alerting, longer in idle
@@ -209,7 +211,8 @@ class MochisukiEngine:
                 logger.info("MQTT connected — subscribed to %s", config.MQTT_TOPIC_SUB)
                 # Refresh idle display to show connection status
                 if self.state is AppState.IDLE:
-                    await self.display.show_idle(connected=True)
+                    await self.display.show_idle(connected=True,
+                                                 last_notification_time=self._last_notification_time)
 
                 await self._shutdown_event.wait()
 
@@ -220,7 +223,8 @@ class MochisukiEngine:
             except Exception as exc:
                 self.hermes_connected = False
                 if self.state is AppState.IDLE:
-                    await self.display.show_idle(connected=False)
+                    await self.display.show_idle(connected=False,
+                                                 last_notification_time=self._last_notification_time)
                 if self._shutdown_event.is_set():
                     break
                 logger.warning("MQTT disconnected (%s), retrying in 5s...", exc)
@@ -255,6 +259,7 @@ class MochisukiEngine:
             payload.get("urgency", "unknown"),
             payload.get("source", "unknown"),
         )
+        self._last_notification_time = time.time()
         await self.queue.put(payload)
 
     async def _process_network_queue(self):
@@ -311,7 +316,8 @@ class MochisukiEngine:
         logger.info("→ IDLE")
         await self.proximity.disable()
         await self.leds.off()
-        await self.display.show_idle(connected=self.hermes_connected)
+        await self.display.show_idle(connected=self.hermes_connected,
+                                         last_notification_time=self._last_notification_time)
         self.current_notification = None
 
     # ── Escalation ────────────────────────────────────────────────────

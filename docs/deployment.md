@@ -4,7 +4,7 @@
 
 | Component | Part | Notes |
 |---|---|---|
-| Board | Raspberry Pi Zero 2 W | Headless, no display needed for boot |
+| Board | Raspberry Pi Zero W | Headless, no display needed for boot |
 | Display | ZJY_M242 OLED (SSD1309, 128×64) | SPI — 128×64px |
 | LEDs | Adafruit NeoPixel Stick (8× WS2812B) | GPIO 18 — single-wire PWM |
 | Proximity | VL53L1X ToF breakout | I2C — address 0x29 |
@@ -91,6 +91,25 @@ echo "MQTT_PASSWORD=your-password" >> .env
 echo "MQTT_TLS=true" >> .env
 ```
 
+## Tailscale deployment (recommended for remote access)
+
+For a headless Pi with no public IP, Tailscale provides a secure WireGuard mesh. This is the recommended network setup for Mochisuki.
+
+```bash
+# Install Tailscale on the Pi
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+
+# Note the Tailscale IP (100.x.x.x) shown after auth
+# Use it as your MQTT broker address in .env and Hermes config
+```
+
+Once Tailscale is set up, your MQTT traffic is encrypted inside the WireGuard tunnel — no need for Mosquitto TLS between tailnet devices. The `.env` on the Pi uses the Tailscale IP of your broker machine (or `localhost` if the broker runs on the Pi itself).
+
+**Security note:** Even with Tailscale, add a Mosquitto password file to prevent other tailnet users from publishing to `hermes/notify` — see the MQTT security section above.
+
+---
+
 ## Application setup
 
 ```bash
@@ -102,10 +121,13 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Create .env with your MQTT broker IP
+# Create .env with your MQTT broker IP and optional auth
 cat > .env << 'EOF'
 MQTT_BROKER=10.0.0.50   # or your Tailscale IP
 MQTT_PORT=1883
+# MQTT_USERNAME=mochisuki       # uncomment if you set up broker auth
+# MQTT_PASSWORD=your-password   # uncomment if you set up broker auth
+# MQTT_TLS=true                 # uncomment if using TLS
 EOF
 ```
 
@@ -147,6 +169,27 @@ mosquitto_pub -h <pi-ip> -t hermes/notify -m '{"id":"deploy-test","title":"Hello
 # Check the daemon log:
 sudo journalctl -u mochisuki --since "5 minutes ago"
 ```
+
+## Hardware verification
+
+After deployment, run the test scripts to verify each component:
+
+```bash
+cd /home/pi/mochisuki
+
+# Test SPI bus connectivity to the OLED
+python test_spi.py
+# Expected: "SPI response: [...]" — confirms the bus is alive
+
+# Test the OLED display — cycles through faces + notification cards
+venv/bin/python test_display.py
+
+# Test the NeoPixel strip — color cycle + chase animation
+# (requires root for DMA access)
+sudo venv/bin/python test_leds.py
+```
+
+Each script exercises one subsystem and exits cleanly. If a component isn't wired yet, its driver will log a stub message rather than crash.
 
 ## Updating
 

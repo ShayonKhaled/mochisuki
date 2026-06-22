@@ -17,12 +17,15 @@ brew install mosquitto && brew services start mosquitto
 # 2. Create venv and install deps
 python3 -m venv venv
 source venv/bin/activate
-pip install aiomqtt==2.5.1 python-dotenv==1.0.1 Pillow==10.3.0
+pip install paho-mqtt==2.1.0 python-dotenv==1.0.1 Pillow==10.3.0
 
 # 3. Point to localhost
 cat > .env << 'EOF'
 MQTT_BROKER=localhost
 MQTT_PORT=1883
+# MQTT_USERNAME=mochisuki       # uncomment if broker has auth
+# MQTT_PASSWORD=your-password   # uncomment if broker has auth
+# MQTT_TLS=true                 # uncomment if broker uses TLS
 EOF
 
 # 4. Run it
@@ -56,7 +59,7 @@ See [docs/architecture.md](docs/architecture.md) for the full design.
 ## Stack
 
 - **Python 3.11+** — single-threaded `asyncio` event loop
-- **aiomqtt** — async MQTT client (subscribes `hermes/notify`, publishes `hermes/ack`)
+- **paho-mqtt** — MQTT client with thread-safe deque for async-compatible event loop
 - **microdot** — async HTTP server (webhook endpoint — coming in phase 2)
 - **ProductionLogger** — SQLite with WAL + `synchronous=NORMAL` for SD-card longevity
 - **Hardware** — VL53L1X (ToF proximity), WS2812B (NeoPixels), ZJY_M242 OLED (SSD1309 128×64 SPI), piezo buzzer

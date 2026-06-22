@@ -6,6 +6,7 @@ Split-screen UI with face zone (left) and content zone (right).
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -173,13 +174,32 @@ class AsyncDisplay:
     # ── IDLE ──────────────────────────────────────────────────────────
 
     async def show_idle(self, connected: bool = True,
-                        now: datetime = None) -> None:
-        """Sleeping face left, clock right — animated frame by frame."""
+                        now: datetime = None,
+                        last_notification_time: float = None) -> None:
+        """Sleeping face left, time-since-last-notification right."""
         if not self.device:
             logger.info("[display] idle (connected=%s)", connected)
             return
-        now = now or datetime.now()
-        time_str = now.strftime("%H:%M")
+
+        # Time since last Hermes notification
+        if last_notification_time is None:
+            ago_str = "—"
+        else:
+            elapsed = time.time() - last_notification_time
+            if elapsed < 60:
+                ago_str = "↑ just now"
+            elif elapsed < 3600:
+                ago_str = f"↑ {int(elapsed // 60)}m ago"
+            elif elapsed < 86400:
+                hours = int(elapsed // 3600)
+                minutes = int((elapsed % 3600) // 60)
+                if minutes == 0:
+                    ago_str = f"↑ {hours}h ago"
+                else:
+                    ago_str = f"↑ {hours}h {minutes}m"
+            else:
+                days = int(elapsed // 86400)
+                ago_str = f"↑ {days}d ago"
 
         # Alternate between sleep states for a gentle breathing animation
         eyes = ["(._.)", "(∪.∪)", "(._.)", "(u.u)"]
@@ -192,7 +212,7 @@ class AsyncDisplay:
         def _draw(draw):
             _draw_frame(draw, brightness=80)
             _draw_face(draw, face, _FACE_Y, brightness=180)
-            _draw_content_centred(draw, time_str, 18, brightness=180)
+            _draw_content_centred(draw, ago_str, 18, brightness=180)
             # Connection dot under the face
             dot = "•" if connected else "○"
             w = _FONT_BODY.getbbox(dot)[2]
@@ -202,7 +222,7 @@ class AsyncDisplay:
                          text_brightness=80, line_brightness=60)
 
         await self._render(_draw, contrast=self._contrast_dim)
-        logger.debug("[display] idle %s  %s  %s", time_str, "OK" if connected else "??", face)
+        logger.debug("[display] idle %s  %s  %s", ago_str, "OK" if connected else "??", face)
 
     # ── ALERT ─────────────────────────────────────────────────────────
 

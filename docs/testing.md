@@ -17,7 +17,7 @@ brew services start mosquitto
 cd /path/to/mochisuki
 python3 -m venv venv
 source venv/bin/activate
-pip install aiomqtt==2.5.1 python-dotenv==1.0.1 Pillow==10.3.0
+pip install paho-mqtt==2.1.0 python-dotenv==1.0.1 Pillow==10.3.0
 ```
 
 ### 3. Configure
@@ -130,6 +130,14 @@ Currently no automated test suite.
 
 ---
 
-## On Raspberry Pi
+## Hardware test scripts
+
+Three standalone test scripts live in the repo root for checking hardware on the Pi:
+
+| Script | What it tests | How to run |
+|---|---|---|
+| `test_spi.py` | SPI bus to the OLED (raw `spidev` transfer) | `python test_spi.py` |
+| `test_display.py` | OLED faces, notification cards, canvas rendering | `venv/bin/python test_display.py` |
+| `test_leds.py` | WS2812B color cycle + chase animation | `sudo venv/bin/python test_leds.py` |
 
 See [deployment.md](deployment.md) for full hardware setup and provisioning.
