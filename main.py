@@ -113,12 +113,7 @@ class MochisukiEngine:
         # ⚠ When phase 2 is enabled, the handler MUST validate
         #    Authorization: Bearer {config.WEBHOOK_SECRET} before processing.
 
-        shutdown_task = asyncio.create_task(self._shutdown_event.wait())
-        mqtt_wake_task = asyncio.create_task(self._mqtt_wake.wait())
-
         # ── Main event loop ───────────────────────────────────────────
-        pending = {mqtt_task, shutdown_task, mqtt_wake_task}
-
         try:
             while not self._shutdown_event.is_set():
                 # Drain thread-safe MQTT deque onto the async queue
@@ -152,17 +147,7 @@ class MochisukiEngine:
 
                 # Sleep to yield CPU — shorter in alerting, longer in idle
                 sleep_s = 0.05 if self.state is AppState.ALERTING else 0.25
-                done, _ = await asyncio.wait(
-                    pending,
-                    timeout=sleep_s,
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if mqtt_wake_task in done:
-                    self._mqtt_wake.clear()
-                    mqtt_wake_task = asyncio.create_task(self._mqtt_wake.wait())
-                    pending.add(mqtt_wake_task)
-                if shutdown_task in done:
-                    break
+                await asyncio.sleep(sleep_s)
         finally:
             await self._shutdown()
 
