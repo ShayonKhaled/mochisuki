@@ -201,7 +201,7 @@ class MochisukiEngine:
             logger.info("MQTT ack published to %s for %s",
                          config.MQTT_TOPIC_ACK, payload["id"])
 
-        def _on_disconnect(_client, _userdata, rc, _props=None):
+        def _on_disconnect(_client, _userdata, rc, *_args):
             """paho callback — connection dropped (runs in network thread)."""
             self.hermes_connected = False
             if rc != 0:
@@ -209,7 +209,7 @@ class MochisukiEngine:
             else:
                 logger.info("MQTT clean disconnect")
 
-        def _on_connect(_client, _userdata, _flags, rc, _props=None):
+        def _on_connect(_client, _userdata, _flags, rc, *_args):
             """paho callback — (re)connected (runs in network thread)."""
             self.hermes_connected = True
             logger.info("MQTT (re)connected (rc=%s)", rc)
