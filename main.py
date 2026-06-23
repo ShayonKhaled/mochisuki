@@ -253,10 +253,18 @@ class MochisukiEngine:
             )
             return
 
+        urgency = payload.get("urgency", "low")
+        if urgency not in URGENCY_ORDER:
+            logger.warning(
+                "Unknown urgency '%s' — will be treated as 'low'. "
+                "Expected one of: %s",
+                urgency, list(URGENCY_ORDER),
+            )
+
         logger.info(
             "Notification enqueued: %s [%s] <%s>",
             payload.get("title", "(no title)"),
-            payload.get("urgency", "unknown"),
+            urgency,
             payload.get("source", "unknown"),
         )
         self._last_notification_time = time.time()

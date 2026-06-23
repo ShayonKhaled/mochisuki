@@ -61,6 +61,12 @@ class HermesNotifier:
             urgency: ``low`` | ``medium`` | ``high`` | ``critical``.
             notify_id: Unique id; auto-generated if omitted.
         """
+        if urgency not in URGENCY_ORDER:
+            logger.warning(
+                "Unknown urgency '%s' — defaulting to 'low'. "
+                "Expected one of: %s", urgency, list(URGENCY_ORDER),
+            )
+            urgency = "low"
         payload = {
             "id": notify_id or uuid.uuid4().hex[:12],
             "title": title,
@@ -90,10 +96,10 @@ class HermesNotifier:
             return
         try:
             import paho.mqtt.client as mqtt
-        except ImportError:
-            print("paho-mqtt not installed. Run: pip install paho-mqtt",
-                  file=sys.stderr)
-            sys.exit(1)
+        except ImportError as exc:
+            raise ImportError(
+                "paho-mqtt is required. Install it: pip install paho-mqtt"
+            ) from exc
         self._client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=self.client_id,
@@ -149,4 +155,8 @@ def _cli():
 
 
 if __name__ == "__main__":
-    _cli()
+    try:
+        _cli()
+    except ImportError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
