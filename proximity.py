@@ -36,7 +36,7 @@ class AsyncProximity:
         self._enabled = False
         self._sensor = None
         self._last_wave_at: float = 0.0
-        self._cooldown = 1.0          # seconds between wave triggers
+        self._cooldown = 0.3          # seconds between wave triggers
         self._last_error_at: float = 0.0
         self._error_count: int = 0
         self._wave_pending = False     # near reading seen during cooldown
