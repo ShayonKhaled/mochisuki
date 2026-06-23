@@ -75,6 +75,11 @@ class AsyncProximity:
         self._enabled = True
         if self._sensor is not None:
             self._sensor.start_ranging(self._mode)
+            self._sensor.set_inter_measurement_period(50)
+            # Warm-up read: the first get_distance() after start_ranging
+            # takes ~940ms to stabilize. Consume it here so the main
+            # loop never sees the slow read.
+            self._sensor.get_distance()
         self._error_count = 0
         self._last_wave_at = time.monotonic()
         self._wave_pending = False
