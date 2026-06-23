@@ -224,8 +224,8 @@ class AsyncDisplay:
             else:
                 _draw_frame(draw, brightness=180)
                 _draw_face(draw, FACES["dead"], _FACE_Y, brightness=180)
-                _draw_content_centred(draw, "NO MQTT", 10, brightness=180)
-                _draw_content_centred(draw, "reconnecting…", 26, brightness=80)
+                _draw_content_centred(draw, "OFFLINE", 12, brightness=180)
+                _draw_content_centred(draw, "retrying…", 27, brightness=80)
                 _draw_footer(draw, ago_str,
                              text_brightness=80, line_brightness=100)
 

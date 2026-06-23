@@ -77,6 +77,9 @@ class MochisukiEngine:
         # Flash task — continuous blink during escalation
         self._flash_task: Optional[asyncio.Task] = None
 
+        # Offline LED guard — avoid hammering LED driver on every tick
+        self._offline_led_shown: bool = False
+
         # Subsystems
         self.db = ProductionLogger(config.DB_PATH)
         self.display = AsyncDisplay()
@@ -139,6 +142,13 @@ class MochisukiEngine:
                             connected=self.hermes_connected,
                             last_notification_time=self._last_notification_time,
                         )
+                        # Solid red LED when MQTT is down
+                        if not self.hermes_connected and not self._offline_led_shown:
+                            await self.leds.set_urgency("high")
+                            self._offline_led_shown = True
+                        elif self.hermes_connected and self._offline_led_shown:
+                            await self.leds.off()
+                            self._offline_led_shown = False
 
                 # Sleep to yield CPU — shorter in alerting, longer in idle
                 sleep_s = 0.05 if self.state is AppState.ALERTING else 0.25
@@ -350,6 +360,7 @@ class MochisukiEngine:
         self.state = AppState.IDLE
         self._escalation_level = 0
         self._cancel_flash()
+        self._offline_led_shown = False
         logger.info("→ IDLE")
         await self.proximity.disable()
         await self.leds.off()
