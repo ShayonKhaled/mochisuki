@@ -74,12 +74,23 @@ class MochisukiEngine:
         # Escalation level guard (set once per level transition, never retriggered on same tick)
         self._escalation_level: int = 0
 
+        # Flash task — continuous blink during escalation
+        self._flash_task: Optional[asyncio.Task] = None
+
         # Subsystems
         self.db = ProductionLogger(config.DB_PATH)
         self.display = AsyncDisplay()
         self.leds = AsyncLEDs()
         self.buzzer = AsyncBuzzer()
         self.proximity = AsyncProximity(threshold_mm=config.WAVE_THRESHOLD_MM)
+
+    # ── Flash task helpers ───────────────────────────────────────────
+
+    def _cancel_flash(self):
+        """Cancel the current continuous-flash task, if any."""
+        if self._flash_task is not None and not self._flash_task.done():
+            self._flash_task.cancel()
+            self._flash_task = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
@@ -313,6 +324,7 @@ class MochisukiEngine:
 
         await self.display.show_alert(self.current_notification)
 
+        self._cancel_flash()
         await self.leds.set_urgency(self.current_notification["urgency"])
         await self.buzzer.chime_notify()
         self.db.log_received(self.current_notification)
@@ -321,6 +333,7 @@ class MochisukiEngine:
         """Return to idle — silence everything, show always-on face."""
         self.state = AppState.IDLE
         self._escalation_level = 0
+        self._cancel_flash()
         logger.info("→ IDLE")
         await self.proximity.disable()
         await self.leds.off()
@@ -351,13 +364,24 @@ class MochisukiEngine:
         elif elapsed > config.ESCALATION_2_SEC and self._escalation_level < 2:
             self._escalation_level = 2
             logger.debug("Escalation level 2 (%ds)", int(elapsed))
-            await self.leds.pulse(self.current_notification["urgency"], speed="fast")
+            self._cancel_flash()
+            stop = asyncio.Event()
+            self._flash_task = asyncio.create_task(
+                self.leds.flash_continuous(
+                    self.current_notification["urgency"], speed="fast", stop_event=stop,
+                )
+            )
             await self.buzzer.chime_escalate_2()
 
         elif elapsed > config.ESCALATION_1_SEC and self._escalation_level < 1:
             self._escalation_level = 1
             logger.debug("Escalation level 1 (%ds)", int(elapsed))
-            await self.leds.pulse(self.current_notification["urgency"], speed="slow")
+            stop = asyncio.Event()
+            self._flash_task = asyncio.create_task(
+                self.leds.flash_continuous(
+                    self.current_notification["urgency"], speed="slow", stop_event=stop,
+                )
+            )
 
     # ── Wave Dismiss ──────────────────────────────────────────────────
 

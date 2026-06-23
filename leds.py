@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional
 
 logger = logging.getLogger("mochisuki.leds")
 
@@ -58,16 +59,34 @@ class AsyncLEDs:
         self._set_all(r, g, b)
         logger.info("[leds] urgency %s", urgency)
 
-    async def pulse(self, urgency: str, speed: str = "slow"):
-        """Pulse the urgency color a few times."""
+    async def flash_continuous(self, urgency: str, speed: str = "slow",
+                                 stop_event: Optional[asyncio.Event] = None):
+        """Blinks the urgency color on/off until *stop_event* is set.
+
+        If no stop_event is provided, flashes once (on + off) and returns.
+        """
         r, g, b = self._color_for(urgency)
         delay = 0.15 if speed == "fast" else 0.4
-        for _ in range(3):
+        if stop_event is None:
             self._set_all(r, g, b)
             await asyncio.sleep(delay)
             self._set_all(0, 0, 0)
             await asyncio.sleep(delay)
-        logger.debug("[leds] pulse %s (%s)", urgency, speed)
+            return
+        while not stop_event.is_set():
+            self._set_all(r, g, b)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                pass
+            if stop_event.is_set():
+                break
+            self._set_all(0, 0, 0)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                pass
+        logger.debug("[leds] flash_continuous %s (%s) stopped", urgency, speed)
 
     async def flash_ack(self):
         """Quick green acknowledgment flash."""
