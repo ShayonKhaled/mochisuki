@@ -92,26 +92,16 @@ class AsyncProximity:
     async def read_distance(self) -> int:
         """Poll the sensor and return distance in mm.
 
-        Runs the blocking I2C read in a thread executor with a 0.5s
-        timeout to avoid stalling the async event loop.
-
         Returns:
-            Distance in millimetres (0 = no reading / timeout / error).
+            Distance in millimetres (0 = no reading / error).
         """
         if not self._enabled or not self._sensor:
             return 0
 
-        loop = asyncio.get_running_loop()
         try:
-            dist = await asyncio.wait_for(
-                loop.run_in_executor(None, self._sensor.get_distance),
-                timeout=0.5,
-            )
+            dist = self._sensor.get_distance()
             self._error_count = 0
             return dist
-        except asyncio.TimeoutError:
-            logger.warning("VL53L1X read timed out (0.5s)")
-            return 0
         except Exception as exc:
             now = time.monotonic()
             self._error_count += 1
