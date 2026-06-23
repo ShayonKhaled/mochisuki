@@ -210,16 +210,24 @@ class AsyncDisplay:
         self._idle_frame += 1
 
         def _draw(draw):
-            _draw_frame(draw, brightness=80)
-            _draw_face(draw, face, _FACE_Y, brightness=180)
-            _draw_content_centred(draw, ago_str, 18, brightness=180)
-            # Connection dot under the face
-            dot = "•" if connected else "○"
-            w = _FONT_BODY.getbbox(dot)[2]
-            draw.text((_FACE_CX - w // 2, 40), dot, font=_FONT_BODY,
-                      fill=120 if connected else 50)
-            _draw_footer(draw, zzz,
-                         text_brightness=80, line_brightness=60)
+            if connected:
+                _draw_frame(draw, brightness=80)
+                _draw_face(draw, face, _FACE_Y, brightness=180)
+                _draw_content_centred(draw, ago_str, 18, brightness=180)
+                # Connection dot under the face
+                dot = "•"
+                w = _FONT_BODY.getbbox(dot)[2]
+                draw.text((_FACE_CX - w // 2, 40), dot, font=_FONT_BODY,
+                          fill=120)
+                _draw_footer(draw, zzz,
+                             text_brightness=80, line_brightness=60)
+            else:
+                _draw_frame(draw, brightness=180)
+                _draw_face(draw, FACES["dead"], _FACE_Y, brightness=180)
+                _draw_content_centred(draw, "NO MQTT", 10, brightness=180)
+                _draw_content_centred(draw, "reconnecting…", 26, brightness=80)
+                _draw_footer(draw, ago_str,
+                             text_brightness=80, line_brightness=100)
 
         await self._render(_draw, contrast=self._contrast_dim)
         logger.debug("[display] idle %s  %s  %s", ago_str, "OK" if connected else "??", face)
