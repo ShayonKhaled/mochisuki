@@ -222,7 +222,11 @@ class MochisukiEngine:
         def _on_connect(_client, _userdata, _flags, rc, *_args):
             """paho callback — (re)connected (runs in network thread)."""
             self.hermes_connected = True
-            logger.info("MQTT (re)connected (rc=%s)", rc)
+            # Re-subscribe on every (re)connect — broker clears subscriptions
+            # when clean session client drops.
+            _client.subscribe(config.MQTT_TOPIC_SUB)
+            logger.info("MQTT (re)connected (rc=%s) — subscribed to %s",
+                        rc, config.MQTT_TOPIC_SUB)
 
         while not self._shutdown_event.is_set():
             try:
