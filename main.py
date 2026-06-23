@@ -201,6 +201,19 @@ class MochisukiEngine:
             logger.info("MQTT ack published to %s for %s",
                          config.MQTT_TOPIC_ACK, payload["id"])
 
+        def _on_disconnect(_client, _userdata, rc, _props=None):
+            """paho callback — connection dropped (runs in network thread)."""
+            self.hermes_connected = False
+            if rc != 0:
+                logger.warning("MQTT disconnected (rc=%d) — will auto-reconnect", rc)
+            else:
+                logger.info("MQTT clean disconnect")
+
+        def _on_connect(_client, _userdata, _flags, rc, _props=None):
+            """paho callback — (re)connected (runs in network thread)."""
+            self.hermes_connected = True
+            logger.info("MQTT (re)connected (rc=%d)", rc)
+
         while not self._shutdown_event.is_set():
             try:
                 import paho.mqtt.client as mqtt
@@ -210,12 +223,15 @@ class MochisukiEngine:
                 c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                                 client_id=config.MQTT_CLIENT_ID)
                 c.on_message = _on_message
+                c.on_connect = _on_connect
+                c.on_disconnect = _on_disconnect
+                c.reconnect_delay_set(min_delay=1, max_delay=30)
                 # Optional broker authentication
                 if config.MQTT_USERNAME and config.MQTT_PASSWORD:
                     c.username_pw_set(config.MQTT_USERNAME, config.MQTT_PASSWORD)
                 if config.MQTT_TLS:
                     c.tls_set()
-                c.connect(config.MQTT_BROKER, config.MQTT_PORT)
+                c.connect(config.MQTT_BROKER, config.MQTT_PORT, keepalive=60)
                 c.subscribe(config.MQTT_TOPIC_SUB)
                 c.loop_start()
                 self.hermes_connected = True
