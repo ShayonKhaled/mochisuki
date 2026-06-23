@@ -205,14 +205,14 @@ class MochisukiEngine:
             """paho callback — connection dropped (runs in network thread)."""
             self.hermes_connected = False
             if rc != 0:
-                logger.warning("MQTT disconnected (rc=%d) — will auto-reconnect", rc)
+                logger.warning("MQTT disconnected (rc=%s) — will auto-reconnect", rc)
             else:
                 logger.info("MQTT clean disconnect")
 
         def _on_connect(_client, _userdata, _flags, rc, _props=None):
             """paho callback — (re)connected (runs in network thread)."""
             self.hermes_connected = True
-            logger.info("MQTT (re)connected (rc=%d)", rc)
+            logger.info("MQTT (re)connected (rc=%s)", rc)
 
         while not self._shutdown_event.is_set():
             try:
