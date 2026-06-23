@@ -53,7 +53,8 @@ class AsyncProximity:
                 i2c_address=self.address,
             )
             self._sensor.open()
-            self._sensor.start_ranging(self._mode)
+            self._sensor.stop_ranging()   # clear stale state from crashed sessions
+            # Ranging started/stopped by enable()/disable()
 
             logger.info(
                 "VL53L1X initialised on I2C bus 1 @ 0x%02X (mode=%d, threshold=%dmm)",
@@ -72,14 +73,18 @@ class AsyncProximity:
     async def enable(self):
         """Activate proximity polling with startup cooldown."""
         self._enabled = True
+        if self._sensor is not None:
+            self._sensor.start_ranging(self._mode)
         self._error_count = 0
         self._last_wave_at = time.monotonic()
         self._wave_pending = False
         logger.debug("Proximity polling enabled")
 
     async def disable(self):
-        """Deactivate proximity polling."""
+        """Deactivate proximity polling and stop sensor."""
         self._enabled = False
+        if self._sensor is not None:
+            self._sensor.stop_ranging()
         logger.debug("Proximity polling disabled")
 
     # ── Reading ──────────────────────────────────────────────────────
