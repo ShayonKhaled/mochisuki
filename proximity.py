@@ -161,9 +161,10 @@ class AsyncProximity:
         if dist <= 0:
             return False
 
-        # VL53L1X minimum reliable range is ~40 mm. Readings below
-        # that (non-zero) are spurious — treat as no detection.
-        if 0 < dist < 40:
+        # Readings below ~20 mm are almost certainly noise — the
+        # VL53L1X minimum reliable range is ~40 mm but we leave
+        # headroom for real hands that come very close.
+        if 0 < dist < 20:
             return False
 
         # Hand must be within threshold distance
@@ -173,7 +174,10 @@ class AsyncProximity:
         # Must be a significant drop from ambient baseline. This
         # distinguishes a real hand wave from a static object that's
         # already in the sensor's field of view (e.g. desk at 90mm).
-        if self._baseline_mm > 0 and dist > self._baseline_mm - self._wave_delta_mm:
+        # Only apply when there's meaningful headroom (baseline - delta
+        # > noise floor), otherwise fall back to threshold-only.
+        min_delta = self._baseline_mm - self._wave_delta_mm
+        if self._baseline_mm > 0 and min_delta > 20 and dist > min_delta:
             return False
 
         # Hand is near!  If still in startup cooldown, remember and wait
