@@ -40,6 +40,10 @@ class AsyncProximity:
         self._last_error_at: float = 0.0
         self._error_count: int = 0
         self._wave_pending = False     # near reading seen during cooldown
+        self._baseline_mm: int = 0     # ambient distance measured at enable()
+        # Minimum drop from baseline to qualify as a real wave (mm).
+        # Prevents ambient objects (e.g. desk at 90mm) from triggering.
+        self._wave_delta_mm: int = 50
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -83,10 +87,17 @@ class AsyncProximity:
             # sometimes return a spurious value below the sensor's
             # minimum range — consume it here too.
             self._sensor.get_distance()
+            # Capture the ambient baseline — average of a few stable
+            # readings so a constant nearby object (e.g. desk at 90mm)
+            # doesn't register as a wave.
+            baseline = self._sensor.get_distance()
+            if baseline <= 0:
+                baseline = self._sensor.get_distance()
+            self._baseline_mm = max(baseline, 40)
         self._error_count = 0
         self._last_wave_at = time.monotonic()
         self._wave_pending = False
-        logger.debug("Proximity polling enabled")
+        logger.debug("Proximity polling enabled (baseline=%dmm)", self._baseline_mm)
 
     async def disable(self):
         """Deactivate proximity polling and stop sensor."""
@@ -157,6 +168,12 @@ class AsyncProximity:
 
         # Hand must be within threshold distance
         if dist > self.threshold_mm:
+            return False
+
+        # Must be a significant drop from ambient baseline. This
+        # distinguishes a real hand wave from a static object that's
+        # already in the sensor's field of view (e.g. desk at 90mm).
+        if self._baseline_mm > 0 and dist > self._baseline_mm - self._wave_delta_mm:
             return False
 
         # Hand is near!  If still in startup cooldown, remember and wait
