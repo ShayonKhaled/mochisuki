@@ -76,9 +76,12 @@ class AsyncProximity:
         if self._sensor is not None:
             self._sensor.start_ranging(self._mode)
             self._sensor.set_inter_measurement_period(50)
-            # Warm-up read: the first get_distance() after start_ranging
-            # takes ~940ms to stabilize. Consume it here so the main
-            # loop never sees the slow read.
+            # First warm-up read: the first get_distance() after
+            # start_ranging takes ~940ms to stabilize.
+            self._sensor.get_distance()
+            # Second warm-up read: the first fast read (~50ms) can
+            # sometimes return a spurious value below the sensor's
+            # minimum range — consume it here too.
             self._sensor.get_distance()
         self._error_count = 0
         self._last_wave_at = time.monotonic()
@@ -145,6 +148,11 @@ class AsyncProximity:
 
         # Error / glitch readings — skip
         if dist <= 0:
+            return False
+
+        # VL53L1X minimum reliable range is ~40 mm. Readings below
+        # that (non-zero) are spurious — treat as no detection.
+        if 0 < dist < 40:
             return False
 
         # Hand must be within threshold distance
