@@ -92,7 +92,21 @@ class AsyncBuzzer:
         logger.info("[buzzer] chime: timeout/sulk (2 slow chirps)")
         await self._chirp(on_ms=200, off_ms=300, count=2)
 
-    async def chime_escalate_2(self):
-        """Level 2 escalation — 5 rapid urgent chirps."""
-        logger.info("[buzzer] chime: escalation level 2 (5 rapid chirps)")
-        await self._chirp(on_ms=50, off_ms=50, count=5)
+    async def chime_escalate_2(self, stop_event: asyncio.Event = None):
+        """Level 2 escalation — 5 rapid urgent chirps.
+
+        If *stop_event* is provided, repeats the chirp pattern continuously
+        in a loop (with a short pause between bursts) until the event is
+        set. Without it, plays once.
+        """
+        if stop_event:
+            logger.info("[buzzer] chime: escalation level 2 (continuous)")
+            while not stop_event.is_set():
+                await self._chirp(on_ms=50, off_ms=50, count=5)
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    pass
+        else:
+            logger.info("[buzzer] chime: escalation level 2 (5 rapid chirps)")
+            await self._chirp(on_ms=50, off_ms=50, count=5)

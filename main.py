@@ -77,6 +77,10 @@ class MochisukiEngine:
         # Flash task — continuous blink during escalation
         self._flash_task: Optional[asyncio.Task] = None
 
+        # Buzz task — continuous chirp during escalation level 2
+        self._buzz_task: Optional[asyncio.Task] = None
+        self._buzz_stop: Optional[asyncio.Event] = None
+
         # Offline LED guard — avoid hammering LED driver on every tick
         self._offline_led_shown: bool = False
 
@@ -87,13 +91,22 @@ class MochisukiEngine:
         self.buzzer = AsyncBuzzer()
         self.proximity = AsyncProximity(threshold_mm=config.WAVE_THRESHOLD_MM)
 
-    # ── Flash task helpers ───────────────────────────────────────────
+    # ── Continuous task helpers ──────────────────────────────────────
 
     def _cancel_flash(self):
         """Cancel the current continuous-flash task, if any."""
         if self._flash_task is not None and not self._flash_task.done():
             self._flash_task.cancel()
             self._flash_task = None
+
+    def _stop_buzz(self):
+        """Stop the continuous buzzer task if running."""
+        if self._buzz_stop is not None:
+            self._buzz_stop.set()
+        if self._buzz_task is not None and not self._buzz_task.done():
+            self._buzz_task.cancel()
+            self._buzz_task = None
+            self._buzz_stop = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
@@ -340,6 +353,7 @@ class MochisukiEngine:
         await self.display.show_alert(self.current_notification)
 
         self._cancel_flash()
+        self._stop_buzz()
         await self.leds.set_urgency(self.current_notification["urgency"])
         await self.buzzer.chime_notify()
         self.db.log_received(self.current_notification)
@@ -349,6 +363,7 @@ class MochisukiEngine:
         self.state = AppState.IDLE
         self._escalation_level = 0
         self._cancel_flash()
+        self._stop_buzz()
         self._offline_led_shown = False
         logger.info("→ IDLE")
         await self.proximity.disable()
@@ -372,6 +387,7 @@ class MochisukiEngine:
             self.db.log_action(
                 self.current_notification["id"], "ignored", int(elapsed)
             )
+            self._stop_buzz()
             await self.buzzer.chime_sulk()
             await self.display.show_sulk(self.current_notification)
             await asyncio.sleep(3)
@@ -381,13 +397,17 @@ class MochisukiEngine:
             self._escalation_level = 2
             logger.debug("Escalation level 2 (%ds)", int(elapsed))
             self._cancel_flash()
+            self._stop_buzz()
             stop = asyncio.Event()
             self._flash_task = asyncio.create_task(
                 self.leds.flash_continuous(
                     self.current_notification["urgency"], speed="fast", stop_event=stop,
                 )
             )
-            await self.buzzer.chime_escalate_2()
+            self._buzz_stop = asyncio.Event()
+            self._buzz_task = asyncio.create_task(
+                self.buzzer.chime_escalate_2(stop_event=self._buzz_stop)
+            )
 
         elif elapsed > config.ESCALATION_1_SEC and self._escalation_level < 1:
             self._escalation_level = 1
